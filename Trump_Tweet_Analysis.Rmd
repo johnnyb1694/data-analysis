@@ -29,7 +29,7 @@ We would like to create a model that can take a given input tweet and assign to 
 The first step is to load any necessary packages and read in the data:
 
 ```{r warning=FALSE, message=FALSE}
-load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph")) {
+load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph", "tidytext")) {
   for (req_lib in req_libraries) {
     if (!(req_lib %in% installed.packages())) {
       install.packages(req_lib)
@@ -39,6 +39,7 @@ load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom
 }
 
 load_req_packages() # runs the function defined above
+theme_set(theme_light()) # initialise the theme for ggplot2
 ```
 
 To read in CSV data, I will make use of the `readr::read_csv()` function: 
@@ -110,3 +111,59 @@ trump_tweets_clean %>%
 ```
 
 ## Data Exploration
+
+We can see from the data the period of time over which this data spans:
+
+```{r}
+trump_tweets_clean %>%
+    select(Year, Month) %>%
+    distinct()
+```
+
+Donald Trump was officially elected in November 2016 so it looks as though these tweets capture most of his electoral journey. It would be interesting to observe his daily activity on Twitter split by year and month:
+
+```{r}
+trump_tweets_clean %>%
+  ggplot(aes(Hour, fill = as.factor(Month))) +
+  geom_density(show.legend = FALSE) +
+  facet_grid(Year~Month) +
+  theme(axis.text.x = element_text(size = 7.5)) +
+  labs(y = "Density", 
+       title = "Trump's Twitter Activity", 
+       subtitle = "Split by year and month - Trump generally becomes active during the evenings")
+```
+
+It seems there isn't much variation in his tweeting patterns over the course of the electoral journey. 
+
+Let's turn our attention to text mining by looking at the most frequently occurring words in this dataset. To do this, we leverage the tidytext function 'unnest_tokens' which splits each tweet into a one word per row format. To maintain an understanding of which word belongs to which tweet, we mutate the initial dataframe - before unnesting - so that each tweet has a pre-defined 'ID'. We also remove any stop-words (e.g. 'a', 'of', 'the'), digits and words like 'Trump / trump': 
+
+```{r}
+trump_tweets_unnested <- trump_tweets_clean %>%
+  mutate(ID = row_number()) %>% 
+  unnest_tokens(output = "Word", input = "Tweet") %>% # split each tweet into a series of one-word rows
+  anti_join(stop_words, by = c("Word" = "word")) %>% # remove stop-words like 'a', 'the' etc.
+  filter(!(Word %in% c("trump", "Trump")), str_detect(Word, "[a-z]")) # filter out any numbers
+
+trump_tweets_unnested # check on representation of data
+```
+
+Now that we have split the data into a 'tidy' format, we can investigate the top 20 (say) most common used words:
+
+```{r warning=FALSE, message=FALSE}
+trump_tweets_unnested %>%
+  count(Word, sort = TRUE) %>%
+  top_n(20) %>%
+  mutate(Word = reorder(Word, n)) %>%
+  ggplot(aes(Word, n, fill = n)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_fill_gradient(low = "blue", high = "red") +  
+  theme_classic() +
+  labs(x = "Term",
+       y = "Frequency",
+       title = "Top 20 Most Frequently Used Words",
+       subtitle = "An insight into Trump's most prevalent tweet contents")
+```
+
+
+
