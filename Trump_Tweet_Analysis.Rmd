@@ -2,7 +2,7 @@
 title: "Analysis of Trump Tweets"
 author: "Johnny Breen"
 date: "05/03/2019"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ### Introduction
