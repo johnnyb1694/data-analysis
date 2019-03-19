@@ -28,7 +28,7 @@ Preliminaries
 The first step is to load any necessary packages and read in the data:
 
 ``` r
-load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph", "tidytext")) {
+load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph", "tidytext", "glmnet")) {
   for (req_lib in req_libraries) {
     if (!(req_lib %in% installed.packages())) {
       install.packages(req_lib)
@@ -41,7 +41,9 @@ load_req_packages() # runs the function defined above
 ```
 
     ## tidyverse  magrittr     broom     widyr    ggraph    igraph  tidytext 
-    ##      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE
+    ##      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE 
+    ##    glmnet 
+    ##      TRUE
 
 ``` r
 theme_set(theme_light()) # initialise the theme for ggplot2
@@ -238,3 +240,174 @@ trump_tweets_unnested %>%
 ```
 
 ![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-8-1.png)
+
+We can also perform an analysis of mood over the course of a defined period of time. For instance, we can observe fluctuations in Trump's mood over the course of an 'average' day:
+
+``` r
+trump_tweets_unnested %>% 
+  mutate(Hour = round(Hour)) %>%
+  inner_join(get_sentiments("afinn"), by = c("Word" = "word")) %>%
+  group_by(Hour) %>%
+  summarise(Sentiment_Score = mean(score)) %>%
+  ungroup() %>%
+  ggplot(aes(Hour, Sentiment_Score, fill = Sentiment_Score)) +
+  geom_col() +
+  theme_classic() +
+  scale_fill_gradient(low = "red", high = "blue") +
+  labs(y = "Positivity Level",
+       fill = "Positivity Level",
+       title = "Sentiment Analysis of Tweets",
+       subtitle = "An analysis of daily mood levels")
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
+This gives us some useful information but what might be more interesting for us is to investigate which choice of words appear to be most correlated with the number of retweets. In this case, each unique ID which we created prior to this stage comprises a series of words which form a tweet - we're looking for the correlation between different words based on how frequently they appear *together* in any given tweet. To do this we will plot a network of words using the 'ggraph' and 'igraph' packages:
+
+``` r
+# First, focus on words with a frequency of over 50 (this is subjective, you can make your own decisions here)
+trump_tweets_filtered <- trump_tweets_unnested %>%
+  add_count(Word) %>%
+  filter(n >= 50)
+
+# Second, of these words calculate the median number of retweets
+trump_tweets_summarised <- trump_tweets_filtered %>%
+  group_by(Word) %>%
+  summarise(Med_Retweet = median(Retweets), Frequency = n()) %>%
+  arrange(desc(Med_Retweet))
+
+# Third, calculate the correlation between the remaining most frequent words
+trump_word_corrs <- trump_tweets_filtered %>%
+  pairwise_cor(item = Word, feature = ID, sort = TRUE) %>% # by 'feature' this means the variable in the data which delineates different groups of words (as tweets) 
+  filter(correlation >= 0.20)
+
+# Fourth, filter the retweets to include only words that have a sufficiently high correlation
+vertices <- trump_tweets_summarised %>%
+  filter(Word %in% trump_word_corrs$item1 | Word %in% trump_word_corrs$item2) 
+
+# Finally, plot the results of the analysis above
+set.seed(2018)
+trump_word_corrs %>%
+  graph_from_data_frame(vertices = vertices) %>%
+  ggraph() +
+  geom_node_point(aes(size = Frequency, colour = Med_Retweet)) +
+  geom_edge_link(aes(alpha = correlation)) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_void() +
+  scale_colour_gradient(low = "blue", high = "red") +
+  labs(title = "Word Correlation Plot",
+       subtitle = "Look for the red clusters - these indicate highly popular tweets",
+       colour = "Retweets (Median)",
+       alpha = "Correlation")
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-10-1.png)
+
+We are now starting to observe more interpretable insights - Donald Trump's propensity to comment on rivals like Bernie Sanders and Hillary Clinton appears to be correlated with his number of retweets. This is not surprising given that the time period associated with this dataset coincides with the US election campaign leading up to November 2016.
+
+The next step in our analysis will be to attempt to fit a penalised regression model to this data in order to understand further the most effective and least effective words to use in order to drive the number of retweets.
+
+Machine Learning
+----------------
+
+We plan to fit a LASSO model to the data for a few reasons:
+
+-   The LASSO model automatically performs variable selection which, in this case, amounts to omitting less important words from the model
+-   This particular model is much easier to interpret both analytically and graphically
+
+First we set up the 'X' matrix. Second we set up the target 'Y' vector to train on:
+
+``` r
+# X variate
+trump_tweets_matrix <- trump_tweets_filtered %>%
+  select(ID, Word) %>%
+  cast_sparse(row = ID, column = Word)
+
+# Y variate
+trump_retweets <- trump_tweets_filtered$Retweets[match(rownames(trump_tweets_matrix), trump_tweets_filtered$ID)]
+```
+
+In order to fit the GLM we will use 'glmnet', a package developed by Trevor Hastie et al which facilitates the fitting of GLMs (standard and regularised). As we are only interested in interpretation, we won't bother holding out a subsection of the data for testing at this stage (the code may be amended later down the line to adjust for this). I have decided to take the log of the response variable to hopefully improve the fit of the model slightly:
+
+``` r
+trump_glm <- cv.glmnet(x = trump_tweets_matrix, y = log(trump_retweets))
+plot(trump_glm)
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+We can observe from the plot above that the minimum MSE is achieved at a variable count of ~155. We can investigate the model in more detail by first tidying the model using the 'broom' package function 'tidy' and then filtering on all the series of models for the minimum lambda found above:
+
+``` r
+trump_term_influence <- tidy(trump_glm$glmnet.fit) %>% # tidy(), in this context, will summarise key model statistics in a data frame
+  filter(lambda == trump_glm$lambda.min) %>%
+  transmute(Word = term, Influence = estimate) # similar to mutate() but drops un-mutated variables
+
+# Top 10 most positively influential (i.e. retweet-friendly) words
+trump_term_influence %>%
+    arrange(desc(Influence)) %>%
+    slice(1:10)
+```
+
+    ## # A tibble: 10 x 2
+    ##    Word           Influence
+    ##    <chr>              <dbl>
+    ##  1 (Intercept)        7.84 
+    ##  2 draintheswamp      0.917
+    ##  3 maga               0.791
+    ##  4 imwithyou          0.675
+    ##  5 hillaryclinton     0.591
+    ##  6 movement           0.583
+    ##  7 pennsylvania       0.566
+    ##  8 carolina           0.534
+    ##  9 safe               0.533
+    ## 10 americafirst       0.532
+
+``` r
+# Top 10 most negatively influential (i.e. retweet-unfriendly) words
+trump_term_influence %>%
+    arrange(Influence) %>%
+    slice(1:10)
+```
+
+    ## # A tibble: 10 x 2
+    ##    Word            Influence
+    ##    <chr>               <dbl>
+    ##  1 realdonaldtrump    -0.975
+    ##  2 donaldtrump        -0.746
+    ##  3 south              -0.729
+    ##  4 truth              -0.658
+    ##  5 donald             -0.639
+    ##  6 a.m                -0.566
+    ##  7 book               -0.494
+    ##  8 foxandfriends      -0.494
+    ##  9 hes                -0.396
+    ## 10 seanhannity        -0.394
+
+The tables above indicate the most positively and negatively influential terms on retweets, respectively. They are the coefficient estimates associated with each term at the optimal value of the penalisation parameter lambda. We can pick out a few terms that we are interested in and observe how their influence changes as the value of lambda is decreased:
+
+``` r
+tidy(trump_glm$glmnet.fit) %>%
+  filter(term %in% c("donaldtrump", "media", "bush", "draintheswamp", "truth", "hillary")) %>%
+  ggplot(aes(x = log(lambda), y = estimate, colour = term)) +
+  geom_line() +
+  geom_vline(xintercept = log(trump_glm$lambda.min), linetype = "dotted") +
+  labs(x = "Log-Lambda",
+       y = "Coefficient Estimate",
+       colour = "Term",
+       title = "How key terms affect the number of retweets",
+       subtitle = "Hilary and 'draintheswamp' appear to be highly significant terms.")
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-14-1.png)
+
+Conclusions
+-----------
+
+This small kernel was only intended to be a very basic introduction to the world of text mining. This code could be taken much further both in terms of exploratory analysis, data pre-processing and modelling. Potential next steps might include:
+
+-   Investigating whether there are any external pieces of data that could be adjoined to the dataset and improve analysis. Each tweet has a timestamp - is there some external information which is influential in some way but not captured by the current data?
+-   Performing more rigorous training and validation of the LASSO model with separate training and holdout sets
+-   Exploring more of the relationships in the data (such as media type and hashtags or likes and retweets)
+
+Happy text mining everybody!
