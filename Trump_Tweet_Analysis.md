@@ -28,7 +28,7 @@ Preliminaries
 The first step is to load any necessary packages and read in the data:
 
 ``` r
-load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph")) {
+load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom", "widyr", "ggraph", "igraph", "tidytext")) {
   for (req_lib in req_libraries) {
     if (!(req_lib %in% installed.packages())) {
       install.packages(req_lib)
@@ -40,8 +40,12 @@ load_req_packages <- function (req_libraries = c("tidyverse", "magrittr", "broom
 load_req_packages() # runs the function defined above
 ```
 
-    ## tidyverse  magrittr     broom     widyr    ggraph    igraph 
-    ##      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE
+    ## tidyverse  magrittr     broom     widyr    ggraph    igraph  tidytext 
+    ##      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE      TRUE
+
+``` r
+theme_set(theme_light()) # initialise the theme for ggplot2
+```
 
 To read in CSV data, I will make use of the `readr::read_csv()` function:
 
@@ -140,3 +144,97 @@ trump_tweets_clean %>%
 
 Data Exploration
 ----------------
+
+We can see from the data the period of time over which this data spans:
+
+``` r
+trump_tweets_clean %>%
+    select(Year, Month) %>%
+    distinct()
+```
+
+    ## # A tibble: 17 x 2
+    ##     Year Month
+    ##    <int> <int>
+    ##  1    16    11
+    ##  2    16    10
+    ##  3    16     9
+    ##  4    16     8
+    ##  5    16     7
+    ##  6    16     6
+    ##  7    16     5
+    ##  8    16     4
+    ##  9    16     3
+    ## 10    16     2
+    ## 11    16     1
+    ## 12    15    12
+    ## 13    15    11
+    ## 14    15    10
+    ## 15    15     9
+    ## 16    15     8
+    ## 17    15     7
+
+Donald Trump was officially elected in November 2016 so it looks as though these tweets capture most of his electoral journey. It would be interesting to observe his daily activity on Twitter split by year and month:
+
+``` r
+trump_tweets_clean %>%
+  ggplot(aes(Hour, fill = as.factor(Month))) +
+  geom_density(show.legend = FALSE) +
+  facet_grid(Year~Month) +
+  theme(axis.text.x = element_text(size = 7.5)) +
+  labs(y = "Density", 
+       title = "Trump's Twitter Activity", 
+       subtitle = "Split by year and month - Trump generally becomes active during the evenings")
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-6-1.png)
+
+It seems there isn't much variation in his tweeting patterns over the course of the electoral journey.
+
+Let's turn our attention to text mining by looking at the most frequently occurring words in this dataset. To do this, we leverage the tidytext function 'unnest\_tokens' which splits each tweet into a one word per row format. To maintain an understanding of which word belongs to which tweet, we mutate the initial dataframe - before unnesting - so that each tweet has a pre-defined 'ID'. We also remove any stop-words (e.g. 'a', 'of', 'the'), digits and words like 'Trump / trump':
+
+``` r
+trump_tweets_unnested <- trump_tweets_clean %>%
+  mutate(ID = row_number()) %>% 
+  unnest_tokens(output = "Word", input = "Tweet") %>% # split each tweet into a series of one-word rows
+  anti_join(stop_words, by = c("Word" = "word")) %>% # remove stop-words like 'a', 'the' etc.
+  filter(!(Word %in% c("trump", "Trump")), str_detect(Word, "[a-z]")) # filter out any numbers
+
+trump_tweets_unnested # check on representation of data
+```
+
+    ## # A tibble: 57,401 x 12
+    ##     Year Month   Day  Hour Type  Media_Type Hashtags  Likes Retweets
+    ##    <int> <int> <int> <int> <fct> <fct>      <fct>     <int>    <int>
+    ##  1    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  2    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  3    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  4    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  5    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  6    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  7    16    11    11    15 text  photo      ThankAV… 127213    41112
+    ##  8    16    11    11    13 text  (None)     (None)   141527    28654
+    ##  9    16    11    11    13 text  (None)     (None)   141527    28654
+    ## 10    16    11    11    13 text  (None)     (None)   141527    28654
+    ## # ... with 57,391 more rows, and 3 more variables: Hour_Min <dbl>,
+    ## #   ID <int>, Word <chr>
+
+Now that we have split the data into a 'tidy' format, we can investigate the top 20 (say) most common used words:
+
+``` r
+trump_tweets_unnested %>%
+  count(Word, sort = TRUE) %>%
+  top_n(20) %>%
+  mutate(Word = reorder(Word, n)) %>%
+  ggplot(aes(Word, n, fill = n)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_fill_gradient(low = "blue", high = "red") +  
+  theme_classic() +
+  labs(x = "Term",
+       y = "Frequency",
+       title = "Top 20 Most Frequently Used Words",
+       subtitle = "An insight into Trump's most prevalent tweet contents")
+```
+
+![](Trump_Tweet_Analysis_files/figure-markdown_github/unnamed-chunk-8-1.png)
