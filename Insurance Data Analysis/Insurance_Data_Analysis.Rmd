@@ -1,0 +1,14 @@
+---
+title: "Insurance Data Analysis"
+author: "Johnny Breen"
+date: "21/03/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction
+
+As somebody who is currently training to be an Actuary, I take a great interest in the insurance industry. One common problem for insurers is how to price insurance contracts. Today I have taken
