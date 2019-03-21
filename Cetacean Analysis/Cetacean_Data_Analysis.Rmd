@@ -1,0 +1,84 @@
+---
+title: "Study of Cetacean Species"
+author: "Johnny Breen"
+date: "27/12/2018"
+output: html_document
+---
+
+# Introduction
+
+This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) challenges posted on github. I am going to analyse a dataset submitted on various cetacean species (i.e. dolphins, whales and porpoises).
+
+## Analysis
+
+(written text to be filled in later on)
+
+```{r read_csv, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(magrittr)
+
+
+species_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018/2018-12-18/allCetaceanData.csv") %>%
+  select(-X1) # X1 seems to be a meaningless extra variable
+
+# most species are bottleneck & orca
+species_raw %>%
+  count(species, sort = TRUE)
+
+# got quite a good balance of genders here
+species_raw %>%
+  count(sex)
+
+# how many species transit through SeaWorld complexes - could be an interesting grouping variable to explore later on
+species_raw %>%
+  transmute(seaworld_ind = str_detect(transfers, regex("SeaWorld", ignore_case = TRUE))) %>%
+  count(seaworld_ind)
+
+# what's the difference between origin date (year animal entered captivity) and entry date (year that the animal entered the US captive population) - seems like the latter is when the animal entered captivity *in the US*
+species_raw %>%
+  mutate(date_equality_test = (originDate == entryDate)) %>%
+  filter(date_equality_test == FALSE) 
+```
+
+Let's look at deceased species now. Questions we might be interested in answering include:
+
+* Is there any difference in time-to-death between captured and non-captured species?
+* Is the cause of death different for captured and non-captured species?
+
+```{r}
+deceased_species <- species_raw %>%
+  filter(status == "Died") %>%
+  mutate(time_to_death = as.integer(statusDate) - as.integer(birthYear))
+
+deceased_species %>%
+  group_by(acquisition) %>%
+  summarise(avg_time_to_death = mean(time_to_death, na.rm = TRUE) / 365) %>%
+  ungroup() %>%
+  mutate(acquisition = fct_reorder(acquisition, avg_time_to_death)) %>%
+  ggplot(aes(x = acquisition, y = avg_time_to_death, colour = acquisition)) +
+  geom_point() +
+  geom_segment(aes(x = acquisition,
+                   xend = acquisition,
+                   y = min(time_to_death, na.rm = TRUE),
+                   yend = time_to_death),
+                   linetype = 'dashed') +
+  coord_flip() +
+  theme_classic() +
+  labs(x = "Acquisition type",
+       y = "Average life expectancy (years)",
+       colour = "Acquisition type",
+       title = "Analysis of cetacean life expectancies",
+       subtitle = "Captured cetaceans incur significantly lower life expectancies")
+
+```
+
+
+```{r}
+deceased_species %>% 
+  split(.$acquisition) %>% 
+  map(~ t.test(.$time_to_death)) %>%
+  map(broom::tidy) %>%
+  reduce(rbind) 
+  
+```
+
