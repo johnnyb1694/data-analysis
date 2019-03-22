@@ -9,7 +9,7 @@ output: html_document
 
 This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) challenges posted on github. I am going to analyse a dataset submitted on various cetacean species (i.e. dolphins, whales and porpoises).
 
-## Analysis
+## Preliminary Inspection of Data
 
 (written text to be filled in later on)
 
@@ -39,6 +39,8 @@ species_raw %>%
   mutate(date_equality_test = (originDate == entryDate)) %>%
   filter(date_equality_test == FALSE) 
 ```
+
+## Investigation of deceased species
 
 Let's look at deceased species now. Questions we might be interested in answering include:
 
