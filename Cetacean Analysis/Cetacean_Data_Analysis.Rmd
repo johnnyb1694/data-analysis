@@ -1,5 +1,5 @@
 ---
-title: "Study of Cetacean Species"
+title: "Captive Cetaceans: Exploratory Analysis & Mortality Investigation"
 author: "Johnny Breen"
 date: "27/12/2018"
 output: rmarkdown::github_document
@@ -9,7 +9,7 @@ output: rmarkdown::github_document
 
 This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) challenges posted on github. In this post, I am going to analyse a dataset submitted on various cetacean species (i.e. dolphins, whales and porpoises).
 
-As an student actuary, I take a great interest in the study of mortality and, normally, in our line of work it is the mortality of human beings that is analysed (in the context of providing life insurance and annuities). However, given that this data contains valuable information on the death rates of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (or otherwise known as by-catch). I do not doubt these claims, given that they are supported by extensive research and vocal scientific voices, and I am aware of the corrosive effect that imprisonment can have on the mental health of cetaceans through various documentaries I have watched over the past few years. 
+As a student actuary, I take a great interest in the study of mortality and, normally, in our line of work it is the mortality of human beings that is analysed (in the context of providing life insurance and annuities). However, given that this data contains valuable information on the death rates of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (or otherwise known as by-catch). I do not doubt these claims, given that they are supported by extensive research and vocal scientific voices, and I am aware of the corrosive effect that imprisonment can have on the mental health of cetaceans through various documentaries I have watched over the past few years. 
 
 ## Preliminary Data Inspection
 

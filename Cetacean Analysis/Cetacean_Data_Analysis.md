@@ -1,4 +1,4 @@
-Study of Cetacean Species
+Captive Cetaceans: Exploratory Analysis & Mortality Investigation
 ================
 Johnny Breen
 27/12/2018
@@ -8,7 +8,7 @@ Introduction
 
 This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) challenges posted on github. In this post, I am going to analyse a dataset submitted on various cetacean species (i.e. dolphins, whales and porpoises).
 
-As an student actuary, I take a great interest in the study of mortality and, normally, in our line of work it is the mortality of human beings that is analysed (in the context of providing life insurance and annuities). However, given that this data contains valuable information on the death rates of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (or otherwise known as by-catch). I do not doubt these claims, given that they are supported by extensive research and vocal scientific voices, and I am aware of the corrosive effect that imprisonment can have on the mental health of cetaceans through various documentaries I have watched over the past few years.
+As a student actuary, I take a great interest in the study of mortality and, normally, in our line of work it is the mortality of human beings that is analysed (in the context of providing life insurance and annuities). However, given that this data contains valuable information on the death rates of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (or otherwise known as by-catch). I do not doubt these claims, given that they are supported by extensive research and vocal scientific voices, and I am aware of the corrosive effect that imprisonment can have on the mental health of cetaceans through various documentaries I have watched over the past few years.
 
 Preliminary Data Inspection
 ---------------------------
@@ -287,6 +287,27 @@ species_raw %>%
 
 According to information on Wikipedia amost half of all spinner dolphins were killed in the 30 years after purse seine fishing for tuna began in the 1950. I wasn't aware of this phenomenon but it could be a potential reason as to why the distribution of the spinner capture rate is so markedly different from the others.
 
+A more general phenomenon to inspect would be how capture / born / rescue rates have changed over time:
+
+``` r
+species_raw %>%
+  filter(acquisition %in% c("Capture", "Rescue", "Born")) %>%
+  ggplot(aes(x = year(originDate), fill = acquisition)) + 
+  geom_histogram(alpha = 0.75, bins = 50) + 
+  theme_light() +
+  scale_x_continuous(breaks = seq(1940, 2020, 5), minor_breaks = seq(1940, 2020, 5)) +
+  labs(x = "Captivity Date",
+       y = "Count",
+       title = "Histogram of acquisition types",
+       subtitle = "The rate of capture appears to drop off rapidly after 1990")
+```
+
+    ## Warning: Removed 2 rows containing non-finite values (stat_bin).
+
+![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
+Clearly, some legislation has come into practice around the 1990s period which has caused a sudden dropoff in the number of dolphins captured. This is interesting to note because it wouldn't necessarily be anticipated prior to visualisation.
+
 ### Survival Modelling
 
 In order to fit a series of survival models to the data we will leverage two additional packages `survival` and `survminer`:
@@ -328,23 +349,26 @@ species_clean_surv <- Surv(time = pull(species_clean, lifespan), event = pull(sp
 species_KM <- survfit(species_clean_surv ~ acquisition, type = "kaplan-meier", data = species_clean)
 species_KM %>% 
   tidy() %>%
+  mutate(strata = case_when(str_detect(strata, "Born") ~ "Born",
+                            str_detect(strata, "Capture") ~ "Captured",
+                            TRUE ~ "Other")) %>%
   ggplot(aes(x = time, y = estimate)) + 
   geom_step(aes(colour = strata)) + 
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = strata), alpha = 0.3) + 
-  theme_classic() +
+  theme_light() +
   scale_x_continuous(breaks = seq(0, 60, 5)) +
   scale_y_continuous(labels = scales::percent_format()) +
-  labs(x = "Time",
+  labs(x = "Life Expectancy (years)",
        y = "Probability of Survival",
        title = "Kaplan-Meier Survival Fit",
-       subtitle = "",
+       subtitle = "According to the fit, less than 50% of captive cetaceans are expected to reach 15 years old",
        fill = "Acquisition",
-       colour = "Acquisition")
+       colour = "Acquisition") 
 ```
 
-![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
-Judging by this plot, if the data is taken to be a good indicator of reality, less than 50% of cetaceans in captivity (born or captured) make it past the age of approximately 10 years old. This is significantly lower than the life expectancy of cetaceans in the wild where the range from 30 - 50 years. Interesting to note is that one would have expected the survival probability of cetaceans born into captivity to be overall lower than those captured (for example, [here](https://us.whales.org/2018/08/23/how-long-do-bottlenose-dolphins-survive-in-captivity/) ) but this data does not seem to reflect that. However, the confidence intervals associated with the 'Born' category to appear to be wider.
+Judging by this plot, if the data is taken to be a good indicator of reality, less than 50% of cetaceans in captivity (born or captured) make it past the age of approximately 10 years old. This is significantly lower than the life expectancy of cetaceans in the wild where the range from 30 - 50 years. Interesting to note is that one would have expected the survival probability of cetaceans born into captivity to be overall lower than those captured (for example, [here](https://us.whales.org/2018/08/23/how-long-do-bottlenose-dolphins-survive-in-captivity/) ). However, we must factor into the equation the fact that captured cetaceans do live a few extra years *outside* of captivity so this is expected.
 
 Cox Proportional Hazards Model
 ------------------------------
@@ -367,7 +391,7 @@ We can use the survminer `ggforest` function (it's basically a wrapper around a 
 ggforest(species_coxph, data = species_clean, main = "Cetacean Hazard Ratios", refLabel = "baseline")
 ```
 
-![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 Some notable observations:
 
