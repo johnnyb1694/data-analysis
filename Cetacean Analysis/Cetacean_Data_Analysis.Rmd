@@ -266,7 +266,7 @@ species_KM %>%
        title = "Kaplan-Meier Survival Fit",
        subtitle = "According to the fit, less than 50% of captive cetaceans are expected to reach 15 years old",
        fill = "Acquisition",
-       colour = "Acquisition")
+       colour = "Acquisition") 
 ```
 
 Judging by this plot, if the data is taken to be a good indicator of reality, less than 50% of cetaceans in captivity (born or captured) make it past the age of approximately 10 years old. This is significantly lower than the life expectancy of cetaceans in the wild where the range from 30 - 50 years. Interesting to note is that one would have expected the survival probability of cetaceans born into captivity to be overall lower than those captured (for example, [here](https://us.whales.org/2018/08/23/how-long-do-bottlenose-dolphins-survive-in-captivity/) ). However, we must factor into the equation the fact that captured cetaceans do live a few extra years *outside* of captivity so this is expected.
