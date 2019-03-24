@@ -31,6 +31,19 @@ As an initial step, let us investigate the distribution of various categorical v
 # most species are of the bottleneck & orca variety
 species_raw %>%
   count(species, sort = TRUE)
+
+# a quick bar plot confirms this - we choose species with a count of above 50
+species_raw %>%
+  add_count(species) %>%
+  filter(n >= 50) %>%
+  ggplot(aes(x = species)) +
+  geom_bar(width = 0.5) +
+  theme_classic() +
+  labs(x = "Species",
+       y = "Count",
+       title = "Approximate distribution of cetacean species",
+       subtitle = "The vast majority of cetacean species fall into the Bottlenose type")
+  theme(axis.text.x = element_text(size = 8, angle = 90))
 ```
 
 One important driver of mortality in humans is gender type. It would be interesting to clarify whether this is replicated in cetaceans:
@@ -51,126 +64,87 @@ species_raw %>%
 
 ## Exploratory Data Analysis
 
-Let's focus our analysis on deceased species now. Our first step should be to filter the data on 'deceased' species and, in addition to this, engineer the life expectancy of each cetacean in the dataset. 
+Let's focus our analysis on deceased species now. Our first step should be to filter the data on 'deceased' species and, in addition to this, engineer the lifespan of each cetacean in the dataset. 
 
-Questions we might be interested in answering include:
-
-* Is there any difference in time-to-death between captured and non-captured species?
-* Is the cause of death different for captured and non-captured species?
+We could focus our analysis solely on cetaceans where the date of birth is known to be accurate, but this would then exclude cetaceans who were born in the wild and subsequently captured - my gut feeling is that this could be an interesting splitting variable so I would like to retain this information. Just be aware that this implies the `lifespan` variable is estimated, in some cases:
 
 ```{r}
 species_deceased <- species_raw %>%
-  filter(status == "Died") %>% # let's focus on species which have deceased and those for which we *know* the birth year is accurate (indicated by "a")
-  mutate(time_to_death = as.integer(difftime(statusDate, originDate, units = "days")) / 365.25)
+  filter(status == "Died") %>% 
+  mutate(lifespan = as.integer(difftime(statusDate, originDate, units = "days")) / 365.25)
 ```
 
+So, now, for each species we have a known (or in the case of captured cetaceans) lifespan. I will first narrow down the scope of the fields in the data
+
+```{r}
+species_deceased_clean <- species_deceased %>%
+  transmute(species, sex, accuracy, acquisition, seaworld_ind = ifelse(str_detect(transfers, regex("SeaWorld", ignore_case = TRUE)), "SeaWorld by-catch", "Other by-catch"), lifespan) %>%
+  mutate_if(is.character, as.factor)
+
+species_deceased_clean 
+```
+
+Let's first review how the lifespan of captive cetaceans vary across different species types:
 
 ```{r message=FALSE}
-# how does the life expectancy of dolphins differ according to acquisition type - the answer is: by some margin. Captured cetaceans appear 
-species_deceased %>%
-  group_by(acquisition) %>%
-  summarise(avg_time_to_death = mean(time_to_death, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(acquisition = fct_reorder(acquisition, avg_time_to_death)) %>%
-  ggplot(aes(x = acquisition, y = avg_time_to_death, colour = acquisition)) +
-  geom_point() +
-  geom_segment(aes(x = acquisition,
-                   xend = acquisition,
-                   y = min(avg_time_to_death, na.rm = TRUE),
-                   yend = avg_time_to_death),
-                   linetype = 'dashed') +
-  coord_flip() +
-  scale_y_continuous(breaks = seq(0, 15, 1)) +
-  theme_classic() +
-  labs(x = "Acquisition type",
-       y = "Average life expectancy (years)",
-       colour = "Acquisition type",
-       title = "Analysis of cetacean life expectancies",
-       subtitle = "Captured cetaceans incur significantly lower life expectancies")
-
-# same plot as above but for species instead - a bit more illuminating
-species_deceased %>%
+species_deceased_clean %>%
   group_by(species) %>%
-  summarise(avg_time_to_death = mean(time_to_death, na.rm = TRUE)) %>%
+  summarise(avg_lifespan = mean(lifespan, na.rm = TRUE)) %>%
   ungroup() %>%
-  mutate(species = fct_reorder(species, avg_time_to_death)) %>%
-  top_n(10) %>%
-  ggplot(aes(x = species, y = avg_time_to_death, colour = species)) +
-  geom_point() +
-  geom_segment(aes(x = species,
-                   xend = species,
-                   y = 0,
-                   yend = avg_time_to_death),
-                   linetype = 'dashed') +
-  coord_flip() +
-  expand_limits(y = 0) +
+  mutate(species = fct_reorder(species, avg_lifespan)) %>%
+  top_n(10, avg_lifespan) %>%
+  ggplot(aes(x = avg_lifespan, y = species, colour = species)) +
+  geom_point(show.legend = FALSE) +
+  geom_segment(aes(x = 0,
+                   xend = avg_lifespan,
+                   y = species,
+                   yend = species),
+                   linetype = 'dotted', show.legend = FALSE) +
+  expand_limits(x = 0) +
+  scale_x_continuous(breaks = seq(0, 35, 5)) +
   theme_classic() +
-  labs(x = "Species",
-       y = "Average life expectancy (years)",
-       colour = "Species",
-       title = "Analysis of cetacean life expectancies",
-       subtitle = "The Amazon River and Boto seem to have favourable life expectancies")
-
-# it may appear that the Boto has an extraordinary life expectancy; however, that's only because it consists of only one observation
-species_deceased %>% 
-  filter(str_detect(species, "Amazon|Boto")) %>%
-  select(species, originDate, statusDate, time_to_death)
+  labs(x = "Average lifespan (years)",
+       y = "Species",
+       title = "Analysis of captive cetacean lifespans",
+       subtitle = "The Amazon River and Boto appear to have favourable lifespans")
 
 ```
 
+It can be very tempting to draw conclusions from a plot like that which is presented above; however, it should be noted that we previously inspected the distribution of species available in the data and the *vast* majority of cetaceans fall under the 'Bottlenose' category. We can confirm the distribution of various species by quick inspection of the variable in the deceased data:
 
 ```{r}
-# construction of life expectancy confidence intervals
-species_deceased_conf <- species_deceased %>%
-  filter(!is.na(time_to_death)) %>%
-  add_count(species) %>%
-  filter(n > 1) %>% # a confidence interval does not make sense for one single value (no variance can be estimated) %>%
-  select(species, time_to_death) %>%
-  nest(time_to_death) %>%
-  mutate(death_intervals = map(data, ~ t.test(pull(.)))) %>%
-  mutate(tidy_death_intervals = map(death_intervals, ~ tidy(.))) %>%
-  unnest(tidy_death_intervals) 
+# top 10 species
+species_deceased_clean %>%
+  count(species) %>%
+  arrange(desc(n))
 
+# bottom 10 species
+species_deceased_clean %>%
+  count(species) %>%
+  arrange(n)
+```
+
+Indeed, the top 10 and bottom 10 pulls of the data, as shown above, demonstrate that the representation in each category can be pivotal when drawing conclusions from the data. What might be more instructive is to construct confidence intervals of the animal lifespan which would take into account the number of data points available on each species type:
+
+```{r}
+species_deceased_conf <- species_deceased_clean %>%
+  filter(!is.na(lifespan)) %>%
+  add_count(species) %>%
+  filter(n > 1) %>% # a confidence interval does not make sense for one single data point
+  select(species, lifespan) %>%
+  nest(lifespan) %>%
+  mutate(lifespan_data = map(data, ~ t.test(pull(.)))) %>% # apply the t.test function to each species
+  mutate(lifespan_intervals = map(lifespan_data, ~ tidy(.))) %>% # tidy the model output generated by the t.test
+  unnest(lifespan_intervals) %>%
+  transmute(Species = species, avg_lifespan = estimate, lifespan_low = ifelse(conf.low < 0, 0, conf.low), lifespan_high = conf.high) # the lower end of a confidence interval can stray below zero since we are implicitly assuming that each of the species' lifespan is normally distributed - for sensibility, we set any conf.low values below zero to zero 
+```
+
+Now that we have derived a reasonable set of confidence intervals, we can plot the average survival times for each species type once again:
+
+```{r}
 # plot of life expectancies associated with certain cetacean species
 species_deceased_conf %>%
-  filter(conf.low >= 0) %>%
-  top_n(10, estimate) %>%
-  mutate(species = fct_reorder(species, estimate)) %>%
-  ggplot(aes(x = species, y = estimate, colour = species)) +
-  geom_point() +
-  geom_segment(aes(x = species,
-                   xend = species,
-                   y = conf.low,
-                   yend = conf.high),
-                   linetype = 'solid') +
-  coord_flip() +
-  expand_limits(y = 0) +
-  theme_classic() +
-  labs(x = "Species",
-       y = "Average life expectancy (years)",
-       colour = "Species",
-       title = "Top 10 Cetacean life expectancies",
-       subtitle = "Orca and Bottlenose estimates are more reliable, on the whole")
   
 ```
-
-## How has the capture of dolphins evolved over time?
-
-```{r}
-species_raw %>% 
-  mutate(capture_year = year(originDate)) %>%
-  count(acquisition, capture_year) %>%
-  ggplot(aes(x = capture_year, colour = acquisition)) +
-  geom_density() +
-  facet_wrap(~acquisition) +
-  theme_light() +
-  labs(title = "Change in acquisition patterns over time",
-       subtitle = "What has caused the incidence of stillborns to increase so rapidly since 1980?",
-       x = "Year of Capture",
-       y = "Density",
-       colour = "Acquisition Type")
-  
-```
-
 
 
