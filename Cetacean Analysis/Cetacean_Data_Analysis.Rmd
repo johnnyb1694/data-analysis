@@ -185,7 +185,9 @@ species_raw %>%
   geom_density() +
   theme_light() +
   labs(title = "Cetacean capture frequency over time",
-       subtitle = "What is the cause of the spike post 1970?") 
+       subtitle = "What is the cause of the spike post 1970?",
+       x = "Year of capture",
+       y = "Density") 
 
 # by species
 species_raw %>%

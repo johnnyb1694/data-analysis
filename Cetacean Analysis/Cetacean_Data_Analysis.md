@@ -271,7 +271,9 @@ species_raw %>%
   geom_density() +
   theme_light() +
   labs(title = "Cetacean capture frequency over time",
-       subtitle = "What is the cause of the spike post 1970?") 
+       subtitle = "What is the cause of the spike post 1970?",
+       x = "Year of capture",
+       y = "Density") 
 ```
 
 ![](Cetacean_Data_Analysis_files/figure-markdown_github/unnamed-chunk-10-1.png)
