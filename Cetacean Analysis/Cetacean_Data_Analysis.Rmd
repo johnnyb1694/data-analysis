@@ -5,13 +5,17 @@ date: "27/12/2018"
 output: rmarkdown::github_document
 ---
 
-# Introduction
+### Introduction
 
-This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) challenges posted on github. In this post, I am going to analyse a dataset submitted on various cetacean species (i.e. dolphins, whales and porpoises).
+This is my first ever contribution to the [TidyTuesday](https://github.com/rfordatascience/tidytuesday) project hosted on github. In this post, I am going to analyse a dataset submitted on various cetacean species (incase, like me, you don't know what a 'cetacean' is, it collectively refers to species such as dolphins and whales).
 
-As a student actuary, I take a great interest in the study of mortality and, normally, in our line of work it is the mortality of human beings that is analysed (in the context of providing life insurance and annuities). However, given that this data contains valuable information on the death rates of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (or otherwise known as by-catch). I do not doubt these claims, given that they are supported by extensive research and vocal scientific voices, and I am aware of the corrosive effect that imprisonment can have on the mental health of cetaceans through various documentaries I have watched over the past few years. 
+As a student actuary, I am personally quite interested in the study of mortality. Within actuarial work itself, mortality investigations are of course limited to human beings (in the context of selling life insurance and annuities, where setting the appropriate premium is of paramount importance). However, given that this data contains valuable information on the death incidence of captive cetaceans, I'd like to make the focus of this analysis on cetacean *mortality*. 
 
-## Preliminary Data Inspection
+### Background
+
+According to the [WWF](http://wwf.panda.org/knowledge_hub/endangered_species/cetaceans/threats/bycatch/), one of the leading causes of premature mortality in dolphins is incidental capture (otherwise known as by-catch). If any of you have had the chance to watch the excellent documentary Blackfish, you would have witnessed the incredibly mental torture and suffering imposed on cetaceans by captivity. Cetaceans are designed to travel; [according to conservation biologist Rob Williams](http://www.bbc.co.uk/earth/story/20160310-why-killer-whales-should-not-be-kept-in-captivity), "These are animals that coordinate their movements over scales of tens of kilometres. It's difficult to replicate that in any aquarium". It is estimated that many orcas travel over 62 miles every day so being imprisoned in something like a SeaWorld complex is extremely damaging to the cetacean way of living.
+
+### Preliminary Data Inspection
 
 As a first step, let us load the cetacean data from the TidyTuesdays github repository:
 
@@ -153,9 +157,9 @@ species_deceased_conf %>%
   top_n(10, avg_lifespan) %>%
   inner_join(count(species_deceased_clean, species)) %>%
   mutate(species = fct_reorder(species, avg_lifespan)) %>%
-  ggplot(aes(x = avg_lifespan, y = species)) +
-  geom_point(aes(colour = species), show.legend = FALSE) +
-  geom_errorbarh(aes(xmin = lifespan_low, xmax = lifespan_high), alpha = 0.75) +
+  ggplot(aes(x = avg_lifespan, y = species, colour = species)) +
+  geom_point(show.legend = F) +
+  geom_errorbarh(aes(xmin = lifespan_low, xmax = lifespan_high), alpha = 0.75, show.legend = F) +
   theme_classic() +
   scale_x_continuous(breaks = seq(0, 50, 5)) +
   labs(x = "Average lifespan (years)",
@@ -243,7 +247,7 @@ species_clean <- species_raw %>%
   replace_na(list(seaworld_ind = "Other by-catch"))
 ```
 
-## Kaplan-Meier Estimation
+## Kaplan-Meier Model
 
 Let's first fit a non-parametric model to the data in the form of the Kaplan-Meier survival model. We could split on different variables such as `sex` and `acquisition` but since I plan to fit a cox proportional hazards model shortly (and such a model leverages covariates) I will probably keep this to a minimum. However, I think I will split the data according to whether the cetacean was born in captivity or captured
 
@@ -259,17 +263,20 @@ species_KM %>%
   geom_step(aes(colour = strata)) + 
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill = strata), alpha = 0.3) + 
   theme_light() +
-  scale_x_continuous(breaks = seq(0, 60, 5)) +
+  facet_wrap(~strata) +  
+  scale_x_continuous(breaks = seq(0, 60, 10)) +
   scale_y_continuous(labels = scales::percent_format()) +
-  labs(x = "Life Expectancy (years)",
-       y = "Probability of Survival",
+  labs(x = "Time until death (years)",
+       y = "Probability of survival",
        title = "Kaplan-Meier Survival Fit",
-       subtitle = "According to the fit, less than 50% of captive cetaceans are expected to reach 15 years old",
+       subtitle = "According to the fit, less than 50% of born, captive cetaceans are expected to reach 15 years old",
        fill = "Acquisition",
        colour = "Acquisition") 
 ```
 
-Judging by this plot, if the data is taken to be a good indicator of reality, less than 50% of cetaceans in captivity (born or captured) make it past the age of approximately 10 years old. This is significantly lower than the life expectancy of cetaceans in the wild where the range from 30 - 50 years. Interesting to note is that one would have expected the survival probability of cetaceans born into captivity to be overall lower than those captured (for example, [here](https://us.whales.org/2018/08/23/how-long-do-bottlenose-dolphins-survive-in-captivity/) ). However, we must factor into the equation the fact that captured cetaceans do live a few extra years *outside* of captivity so this is expected.
+Judging by these models, less than 50% of cetaceans born into captivity make it past the age of approximately 15 years old. This is significantly lower than the life expectancy of cetaceans in the wild where life expectancies typically span the range of 30 to 50 years old. 
+
+Interesting to note is that one would have expected the survival probability of cetaceans born into captivity to be overall lower than those captured (for example, [here](https://us.whales.org/2018/08/23/how-long-do-bottlenose-dolphins-survive-in-captivity/)). However, here we must be careful: we must account for the fact that captured cetaceans live a certain portion of their life *prior* to being captured (captivity) so we should expect the time until death to be, in aggregate, slightly lower for this category of cetaceans.
 
 ## Cox Proportional Hazards Model
 
@@ -281,7 +288,7 @@ In this instance, we will use the data from before, but this time we will be abl
 With these assumptions in mind, we can proceed to fit a model to the data:
 
 ```{r message=FALSE, warning=FALSE}
-species_coxph <- coxph(species_clean_surv ~ species + sex + acquisition + seaworld_ind, 
+species_coxph <- coxph(species_clean_surv ~ species + sex + seaworld_ind, 
                    data = species_clean)
 
 ```
@@ -289,13 +296,13 @@ species_coxph <- coxph(species_clean_surv ~ species + sex + acquisition + seawor
 We can use the survminer `ggforest` function (it's basically a wrapper around a more complicated ggplot which I do not have the time to create!) to quickly inspect the relative differences in mortality due to the factors we fit the model on above:
 
 ```{r message=FALSE, warning=FALSE}
-ggforest(species_coxph, data = species_clean, main = "Cetacean Hazard Ratios", refLabel = "baseline")
+ggforest(species_coxph, data = species_clean, main = "Cetacean Hazard Ratios", refLabel = "Reference")
 ```
 
 Some notable observations:
 
-* The relative risk of mortality appears to be 26% lower for those cetaceans housed in SeaWorld - this surprises me slightly given what we know about SeaWorld as reported by the media. Nonetheless, it is key to remember that all of these species are *captive* so, in truth, any by-catch will be bad for the health and condition of any cetacean
-* There is a 16% increased risk of mortality to captured cetaceans (in comparison to those who were born in captivity). 
-* The variance of species mortality appears to be minimised amongst the studied species; however, this could easily be because we omitted any species with a frequency of less than 50 from our analysis. A keen observer will note that this plot indeed replicates the earlier plot
+* The relative risk of mortality appears to be ~ 27% lower for those cetaceans who have spent time in SeaWorld - this surprises me slightly given what we know about SeaWorld as reported by the media. Nonetheless, it is key to remember that all of these species - regardless of their transit history - are ultimately *captive*. Therefore, whilst there appears to be a relative increase in the probability of survival for those mammals affiliated with SeaWorld, I am fairly certain that by-catch in general is detrimental to the health and condition of any cetacean species. We're simply comparing 'bad' with 'even worse'.
+* There is a extremely significant increase in the risk of death amongst species with an unknown gender. This is curious because, as can be observed, there is a non-trivial number of mammals (`N = 105`) contained within this category. Unfortunately, there is no further information on why the gender of these species is unknown.
+* The variance of mortality appears to be minimised amongst different species types; however, this could easily be because we omitted any species with a frequency of less than 50 from our analysis. A keen observer will note that the hazard ratios presented above appear to replicate the information communicated in the plot of confidence intervals we made earlier. In truth, we do not have sufficient data on each species to comment conclusively on which species suffer more than others.
 
 
