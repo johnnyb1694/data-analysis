@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rvest)
 library(magrittr)
+library(maps) # contains outlines of various 
+library(mapdata)
 
 theme_set(theme_light())
 ```
@@ -35,31 +37,31 @@ prison_summary_raw %>%
 ```
 
 ```{r}
-# let's use the rvest package to scrape some web data quickly 
-us_state_coords <- read_html("https://inkplant.com/code/state-latitudes-longitudes") %>%
-  html_node("table") %>%
-  html_table(header = TRUE) %>%
-  as_tibble() %>%
-  mutate_at(vars(Latitude, Longitude), as.numeric)
-
 us_state_abbrevs <- read_html('https://pe.usps.com/text/pub28/28apb.htm') %>%
   html_node("table.Basic_no_title") %>%
   html_table(header = TRUE) %>%
   as_tibble() %>%
-  rename(State = `State/Possession`)
-
-us_state_data <- us_state_coords %>% 
-  left_join(us_state_abbrevs) %>%
-  select(Abbreviation, Latitude, Longitude)
+  rename(State = `State/Possession`) %>%
+  mutate(State = tolower(State))
 ```
 
 ```{r}
 prison_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_population.csv")
 
 prison_mutated <- prison_raw %>%
-  inner_join(us_state_data, by = c("state" = "Abbreviation"))
+  inner_join(us_state_data, by = c("state" = "Abbreviation")) %>%
+  filter(population != 0) %>%
+  transmute(year, state, inc_rate = )
 
+usa <- map_data('usa')
+usa_base <- ggplot() + geom_polygon(data = usa, aes(x = long, y = lat, group = group)) +
+  theme_void()
 
+us_states <- map_data('state') %>%
+  as_tibble()
+us_states
+prison_mutated
+prison_raw
 ```
 
 ```{r}
