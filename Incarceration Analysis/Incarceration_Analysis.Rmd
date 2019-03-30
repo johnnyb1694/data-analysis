@@ -1,0 +1,87 @@
+---
+title: "Incarceration Rates in the US"
+author: "Johnny Breen"
+date: "25/03/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rvest)
+library(magrittr)
+
+theme_set(theme_light())
+```
+
+## Read in the data
+
+```{r message=FALSE, warning=FALSE}
+prison_summary_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_summary.csv")
+
+prison_summary_raw
+```
+
+```{r}
+prison_summary_raw %>%
+  ggplot(aes(x = year, y = rate_per_100000, colour = urbanicity)) +
+  geom_line() +
+  facet_wrap(~pop_category) +
+  labs(x = "Year",
+       y = "Arrest Rate per 100,000",
+       title = "How have incarceration rates changed over time?",
+       subtitle = "There are clear racial discrepancies",
+       colour = "Urbanicity")
+```
+
+```{r}
+# let's use the rvest package to scrape some web data quickly 
+us_state_coords <- read_html("https://inkplant.com/code/state-latitudes-longitudes") %>%
+  html_node("table") %>%
+  html_table(header = TRUE) %>%
+  as_tibble() %>%
+  mutate_at(vars(Latitude, Longitude), as.numeric)
+
+us_state_abbrevs <- read_html('https://pe.usps.com/text/pub28/28apb.htm') %>%
+  html_node("table.Basic_no_title") %>%
+  html_table(header = TRUE) %>%
+  as_tibble() %>%
+  rename(State = `State/Possession`)
+
+us_state_data <- us_state_coords %>% 
+  left_join(us_state_abbrevs) %>%
+  select(Abbreviation, Latitude, Longitude)
+```
+
+```{r}
+prison_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_population.csv")
+
+prison_mutated <- prison_raw %>%
+  inner_join(us_state_data, by = c("state" = "Abbreviation"))
+
+
+```
+
+```{r}
+prison_sex_intvls <- prison_raw %>%
+  filter(population != 0) %>%
+  transmute(pop_category, inc_rate = prison_population / population) %>%
+  filter(!is.na(inc_rate)) %>%
+  nest(inc_rate) %>%
+  mutate(inc_data = map(data, ~ t.test(pull(.)))) %>%
+  mutate(inc_intervals = map(inc_data, ~ tidy(.))) %>%
+  unnest(inc_intervals) 
+
+prison_sex_intvls %>%
+  mutate(pop_category = fct_reorder(pop_category, estimate)) %>%
+  ggplot(aes(y = pop_category, x = estimate)) +
+  geom_point(aes(colour = (estimate <= 0.015)), show.legend = FALSE) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = estimate), show.legend = FALSE) +
+  scale_x_continuous(labels = scales::percent_format(),
+                     breaks = seq(0, 0.03, 0.005)) +
+  labs(x = "Incarceration rate per 100,000",
+       y = "Demographic",
+       title = "How does your demographic affect your chances of imprisonment?",
+       subtitle = "There is a clear discrepancy in rates between whites and blacks")
+```
+
