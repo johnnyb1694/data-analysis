@@ -10,13 +10,18 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rvest)
 library(magrittr)
-library(maps) # contains outlines of various 
-library(mapdata)
+library(maps) # contains outlines of various counties, cities and states in the USA
+library(mapdata) # same as the above, but a little more detail
+library(gganimate)
+library(gifski)
+library(png)
 
 theme_set(theme_light())
 ```
 
-## Read in the data
+### Introduction 
+
+The data for this post comes from 
 
 ```{r message=FALSE, warning=FALSE}
 prison_summary_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_summary.csv")
@@ -48,24 +53,118 @@ us_state_abbrevs <- read_html('https://pe.usps.com/text/pub28/28apb.htm') %>%
 ```{r}
 prison_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_population.csv")
 
-prison_mutated <- prison_raw %>%
-  inner_join(us_state_data, by = c("state" = "Abbreviation")) %>%
-  filter(population != 0) %>%
-  transmute(year, state, inc_rate = )
-
-usa <- map_data('usa')
-usa_base <- ggplot() + geom_polygon(data = usa, aes(x = long, y = lat, group = group)) +
-  theme_void()
-
-us_states <- map_data('state') %>%
-  as_tibble()
-us_states
-prison_mutated
 prison_raw
 ```
 
 ```{r}
-prison_sex_intvls <- prison_raw %>%
+# for links on how to plot with maps, see the following outstanding link: https://eriqande.github.io/rep-res-web/lectures/making-maps-with-R.html
+us_states <- map_data('state') %>%
+  as_tibble()
+
+us_state_abbrevs <- read_html('https://pe.usps.com/text/pub28/28apb.htm') %>%
+  html_node("table.Basic_no_title") %>%
+  html_table(header = TRUE) %>%
+  as_tibble() %>%
+  rename(State = `State/Possession`) %>%
+  mutate(State = tolower(State))
+
+prison_mutated <- prison_raw %>%
+  inner_join(us_state_abbrevs, by = c("state" = "Abbreviation")) %>%
+  filter(population != 0, prison_population != 0, !is.na(population), !is.na(prison_population)) %>%
+  mutate(imp_rate = prison_population / population)
+
+black_region_rates <- prison_mutated %>%
+  filter(pop_category == "Black", !is.na(imp_rate)) %>%
+  select(-pop_category) %>%
+  group_by(State) %>%
+  summarise(avg_imp_rate = mean(imp_rate)) %>%
+  ungroup()
+
+us_region_rates <- us_states %>%
+  left_join(black_region_rates, by = c("region" = "State"))
+
+black_region_high <- us_region_rates %>%
+  filter(avg_imp_rate > 0.03) %>%
+  distinct(region, .keep_all = TRUE)
+
+# let's first look at one year in time...
+ggplot(mapping = aes(fill = avg_imp_rate)) +
+  geom_polygon(data = us_region_rates, aes(x = long, y = lat, group = group)) +
+  theme_void() +
+  geom_label(data = black_region_high,
+             aes(x = long, y = lat, label = region)) +
+  scale_fill_gradient2(low = "slateblue2", high = "tomato2", midpoint = 0.025, labels = scales::percent_format()) +
+  labs(title = "Proportion of african americans in prison from 1970 - 2016",
+       subtitle = "The labelled states have the highest black imprisoned population numbers in the US",
+       fill = "Avg Jail Proportion")
+```
+
+Let's have a look at which states have experienced the most variation over time:
+
+```{r}
+black_region_sd <- prison_mutated %>%
+  filter(pop_category == "Black", !is.na(imp_rate)) %>%
+  select(-pop_category) %>%
+  add_count(state, county_name, urbanicity, division) %>% # this will return the number of years available for each observation
+  filter(n > 25) %>% # let's stipulate a requirement of more than 25 years of data
+  group_by(State) %>%
+  summarise(sd_imp_rate = sd(imp_rate), count = n()) %>%
+  ungroup()
+
+black_region_sd %>%
+  arrange(desc(sd_imp_rate)) %>%
+  distinct(State, .keep_all = TRUE) %>%
+  select(State, sd_imp_rate) %>%
+  top_n(5, sd_imp_rate)
+```
+
+Let us see whether that is reflected in an animated plot:
+
+```{r}
+by_state_rates <- prison_mutated %>%
+  filter(pop_category == "Black", State %in% c("missouri", "tennessee", "texas", "virginia", "michigan")) %>%
+  group_by(year, State) %>%
+  summarise(avg_imp_rate = mean(imp_rate)) %>%
+  ungroup()
+  
+ggplot(data = by_state_rates, aes(x = year, y = avg_imp_rate, colour = factor(State), group = State)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "Year",
+       y = "Avg proportion of african americans in jail",
+       colour = "State",
+       title = "How have imprisonment patterns changed over time?",
+       subtitle = "States analysed demonstrated the most variation over the period: 1970 - 2016") +
+  transition_reveal(year)
+```
+
+Now let's look at all population categories and perform a facet:
+
+```{r}
+all_region_rates <- prison_mutated %>%
+  filter(!is.na(imp_rate)) %>%
+  group_by(State, pop_category) %>%
+  summarise(avg_imp_rate = mean(imp_rate)) %>%
+  ungroup()
+
+us_region_rates_all <- us_states %>%
+  left_join(all_region_rates, by = c("region" = "State"))
+
+us_region_rates_all %>%
+  filter(pop_category %in% c("Black", "White", "Latino", "Native American")) %>%
+  ggplot(mapping = aes(x = long, y = lat, group = group, fill = avg_imp_rate)) +
+  geom_polygon() +
+  theme_void() +
+  facet_wrap(~pop_category) +
+  scale_fill_gradient2(low = "slateblue2", high = "tomato2", midpoint = 0.10, labels = scales::percent_format())
+
+```
+
+### Analysis of prison population split by demographic
+
+```{r}
+prison_intvls <- prison_raw %>%
   filter(population != 0) %>%
   transmute(pop_category, inc_rate = prison_population / population) %>%
   filter(!is.na(inc_rate)) %>%
@@ -74,16 +173,16 @@ prison_sex_intvls <- prison_raw %>%
   mutate(inc_intervals = map(inc_data, ~ tidy(.))) %>%
   unnest(inc_intervals) 
 
-prison_sex_intvls %>%
+prison_intvls %>%
   mutate(pop_category = fct_reorder(pop_category, estimate)) %>%
   ggplot(aes(y = pop_category, x = estimate)) +
   geom_point(aes(colour = (estimate <= 0.015)), show.legend = FALSE) +
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = estimate), show.legend = FALSE) +
   scale_x_continuous(labels = scales::percent_format(),
                      breaks = seq(0, 0.03, 0.005)) +
-  labs(x = "Incarceration rate per 100,000",
+  labs(x = "Percentage residing in jail",
        y = "Demographic",
-       title = "How does your demographic affect your chances of imprisonment?",
+       title = "Distribution of jail proportions",
        subtitle = "There is a clear discrepancy in rates between whites and blacks")
 ```
 
