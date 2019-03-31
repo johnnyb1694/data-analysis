@@ -7,21 +7,38 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+
+The data for this post comes from the [Vera institute](https://github.com/vera-institute/incarceration_trends). It comes as a timely reminder of the rampant racial injustice that still exists in the United States prison system. If anyone is looking to learn more about this topic, then I recommend watching the documentary ['13th'](https://en.wikipedia.org/wiki/13th_(film)) - the name refers to the Thirteenth Amendment to the United States Constitution, which abolished slavery throughout the United States and ended involuntary servitude *except* as a punishment for a crime. I also can't help sharing one of my favourite songs from that documentary featuring the excellent Bilal:
+
+<iframe width="560" height="315" src="https://www.youtube.com/watch?v=KO7tVuPHOxA" frameborder="0" allowfullscreen></iframe>
+
+As I am currently facing a relatively busy period at work (and revising for exams), this post will be shorter than usual. I plan to focus on:
+
+* How to build a map using `ggplot2`, `maps` and `mapdata`; and
+* How to build an animated plot using 
+
+# Read in the data
+
+As always, we first load the packages that we plan to use:
+
+```{r}
 library(tidyverse)
-library(rvest)
+library(rvest) # we scrape some information from the web on US state abbreviations
 library(magrittr)
 library(maps) # contains outlines of various counties, cities and states in the USA
 library(mapdata) # same as the above, but a little more detail
-library(gganimate)
+library(gganimate) # for animated plots!
 library(gifski)
 library(png)
 
 theme_set(theme_light())
 ```
 
-### Introduction 
 
-The data for this post comes from 
+read in the data
 
 ```{r message=FALSE, warning=FALSE}
 prison_summary_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_summary.csv")
