@@ -1,32 +1,28 @@
----
-title: "Incarceration Rates in the US"
-author: "Johnny Breen"
-date: "25/03/2019"
-output: rmarkdown::github_document
----
+Incarceration Rates in the US
+================
+Johnny Breen
+25/03/2019
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-# Introduction 
+Introduction
+============
 
 The data for this post comes from the [Vera institute](https://github.com/vera-institute/incarceration_trends). It comes as a timely reminder of the racial injustice that still exists in the United States prison system. If anyone is looking to learn more about this topic, then I recommend watching the documentary ['13th'](https://en.wikipedia.org/wiki/13th_(film)) - the name refers to the Thirteenth Amendment of the United States Constitution, which abolished slavery throughout the United States and ended involuntary servitude *except* as a punishment for a crime. I also can't help sharing one of my favourite songs from that documentary featuring the excellent Common and Bilal:
 
 <center>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/KO7tVuPHOxA" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/KO7tVuPHOxA" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen>
+</iframe>
 </center>
-
 As I am currently facing a relatively busy period at work (and revising for exams), this post will be shorter than usual. I plan to focus on:
 
-* How to build a map using `ggplot2`, `maps` and `mapdata`; and
-* How to build an animated plot using `gganimate` (this was my first time too!)
+-   How to build a map using `ggplot2`, `maps` and `mapdata`; and
+-   How to build an animated plot using `gganimate` (this was my first time too!)
 
-# Read in the data
+Read in the data
+================
 
 As always, we first load the packages that we plan to use:
 
-```{r message=FALSE, warning=FALSE}
+``` r
 library(tidyverse)
 library(rvest) # we scrape some information from the web on US state abbreviations
 library(magrittr)
@@ -39,15 +35,16 @@ theme_set(theme_light()) # sets the theme for all plots (unless we instruct othe
 
 Let's first have a quick look at the summary-level data:
 
-```{r message=FALSE, warning=FALSE}
+``` r
 prison_summary_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_summary.csv")
 ```
 
-# Simple plots are effective
+Simple plots are effective
+==========================
 
 The great thing about `ggplot` is that you can plot something non-trivial within a few lines of code. Let's see how the number of individuals in prison (per 100,000) has changed over the course of the last few decades:
 
-```{r}
+``` r
 prison_summary_raw %>%
   ggplot(aes(x = year, y = rate_per_100000, colour = urbanicity)) +
   geom_line() +
@@ -60,23 +57,42 @@ prison_summary_raw %>%
   theme_linedraw()
 ```
 
+![](Incarceration_Analysis_files/figure-markdown_github/unnamed-chunk-3-1.png)
+
 Aside from the clear racial discrepancies that are demonstrated by this plot, it is worth noting that the 'Other' category appears to vanish just when the 'Native American', 'Latino' and 'Asian' categories begin to appear - this suggests that the latter categories were likely once grouped as 'Other'. These are the types of useful insights you can gain *instantly* from simply plotting your data: visualisation is a great tool for pattern detection!
 
-# Geospatial analysis
+Geospatial analysis
+===================
 
-This next section entails my first time to plot geospatial data. Luckily (for me), R comes equipped with several packages to help you to do this, most notably the `maps` package which contains enough data on various large countries (such as the USA and Canada) that you can integrate it with `ggplot2` fairly easily. 
+This next section entails my first time to plot geospatial data. Luckily (for me), R comes equipped with several packages to help you to do this, most notably the `maps` package which contains enough data on various large countries (such as the USA and Canada) that you can integrate it with `ggplot2` fairly easily.
 
 My goal in this section is to develop on the theme we've just explored in the previous plot: how do incarceration rates for African Americans vary across the USA? First, I'm going to read in the full prison data kindly provided by the Vera institute. This data comprises the incarcerations made on a yearly basis, at county level, from 1970 to 2016:
 
-```{r message=FALSE, warning=FALSE}
+``` r
 prison_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-01-22/prison_population.csv")
 
 prison_raw
 ```
 
+    ## # A tibble: 1,327,797 x 9
+    ##     year state county_name urbanicity region division pop_category
+    ##    <int> <chr> <chr>       <chr>      <chr>  <chr>    <chr>       
+    ##  1  1970 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  2  1971 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  3  1972 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  4  1973 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  5  1974 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  6  1975 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  7  1976 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  8  1977 AL    Autauga Co… small/mid  South  East So… Total       
+    ##  9  1978 AL    Autauga Co… small/mid  South  East So… Total       
+    ## 10  1979 AL    Autauga Co… small/mid  South  East So… Total       
+    ## # ... with 1,327,787 more rows, and 2 more variables: population <int>,
+    ## #   prison_population <int>
+
 One thing you'll notice is that the states are expressed as abbreviations. Unfortunately the `maps` package supplies states as full names. Therefore, I went online to find a table which provides a list of US state abbreviations from [USPS](https://www.usps.com). I've used the `rvest` package written by Hadley Wickham which allows for the extraction of the relevant elements from webpages:
 
-```{r}
+``` r
 us_state_abbrevs <- read_html('https://pe.usps.com/text/pub28/28apb.htm') %>%
   html_node("table.Basic_no_title") %>%
   html_table(header = TRUE) %>%
@@ -89,7 +105,7 @@ I learnt how to map spatial data in R using the following fantastically humorous
 
 First, let's derive the longitude-latitude data from the `map_data` function in `ggplot2` - we'll then perform an inner join on this table with the abbreviations we derived above. This will join both tables according to their common column name (in this case the full state names) and augment the state information with the relevant abbreviations:
 
-```{r}
+``` r
 us_states <- map_data('state') %>%
   as_tibble() %>%
   inner_join(us_state_abbrevs, by = c("region" = "full_state"))
@@ -107,7 +123,7 @@ prison_mutated <- prison_raw %>%
 
 Let's see how the imprisonment rate varies across the USA split by state:
 
-```{r}
+``` r
 ggplot() +
   geom_polygon(data = prison_mutated %>% filter(pop_category == "Black"), 
                mapping = aes(x = long, y = lat, group = group, fill = avg_imp_rate)) +
@@ -118,12 +134,13 @@ ggplot() +
   labs(fill = "Imprisonment Rate",
        title = "African American imprisonment rates across the USA: 1970 - 2016",
        subtitle = "The highest are in Nebraska and Utah - some states are missing data") 
-  
 ```
+
+![](Incarceration_Analysis_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 Based on the plot above, we have identified two locations in the US with particularly high imprisonment rates pertaining to African Americans. Another question we an explore is which areas have shown the most change (good or bad) over time? To answer this we can look at the *standard deviation* of African American incarceration rates associated with each state over time:
 
-```{r}
+``` r
 highly_variable_states <- prison_raw %>%
   filter(population != 0, !is.na(population),
          prison_population != 0, !is.na(prison_population)) %>%
@@ -136,9 +153,24 @@ highly_variable_states <- prison_raw %>%
 highly_variable_states
 ```
 
+    ## # A tibble: 40 x 2
+    ##    state sd_imp_rate
+    ##    <chr>       <dbl>
+    ##  1 NE         1.31  
+    ##  2 NC         0.477 
+    ##  3 UT         0.420 
+    ##  4 TN         0.202 
+    ##  5 OK         0.146 
+    ##  6 MO         0.0832
+    ##  7 WI         0.0760
+    ##  8 SD         0.0460
+    ##  9 IL         0.0456
+    ## 10 IN         0.0383
+    ## # ... with 30 more rows
+
 We could examine the evolution of imprisonment rates in these particular states - were there any particularly large spikes? If so, why?
 
-```{r}
+``` r
 top_five_states <- prison_raw %>%
   filter(population != 0, !is.na(population),
          prison_population != 0, !is.na(prison_population)) %>%
@@ -160,6 +192,8 @@ ggplot(data = top_five_states, aes(x = year, y = avg_imp_rate, colour = factor(s
        subtitle = "States analysed demonstrated the most variation over the period: 1970 - 2016") +
   transition_reveal(year)
 ```
+
+![](Incarceration_Analysis_files/figure-markdown_github/unnamed-chunk-9-1.gif)
 
 I'm not so sure whether this quite worked out properly but it's my first time to use `gganimate` so there is a good chance I've made an error somewhere! Nonetheless, we are able to observe some spikes in imprisonment rates during the late 1990s in Utah and during the late 2000s in Nebraska too. There's likely some reasoning behind this that I would like to investigate at a later date.
 
