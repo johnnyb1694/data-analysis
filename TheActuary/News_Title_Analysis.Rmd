@@ -1,0 +1,15 @@
+---
+title: 'Analysis: “The Actuary"'
+author: "Johnny Breen"
+date: "07/04/2019"
+output: html_document
+---
+
+# Preliminaries
+
+```{r message=FALSE, warning=FALSE}
+library(rvest)
+library(tidyverse)
+```
+
+First read in the data
