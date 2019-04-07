@@ -1,5 +1,5 @@
 ---
-title: 'Analysis: “The Actuary"'
+title: 'Textual Analysis of: “The Actuary"'
 author: "Johnny Breen"
 date: "07/04/2019"
 output: html_document
@@ -10,6 +10,111 @@ output: html_document
 ```{r message=FALSE, warning=FALSE}
 library(rvest)
 library(tidyverse)
+library(lubridate)
+library(tidytext)
+
+theme_set(theme_minimal())
 ```
 
-First read in the data
+First read in the data. This requires a function to:
+
+* Loop through as many pages as possible of TheActuary;
+* Extract the news titles and summaries of each article;
+* Extract the date at which the news article was released
+
+```{r}
+# Description: this function calculates the minimum length across all elements of a given list
+
+# e.g. if the input list has elements c(1,2), c(1,5,4,6) and c(1,6,4,5,6,4,3), then this function will return '2' (the length of c(1,2))
+extract_min_length <- function (list) {
+  map(list, ~ length(.)) %>% 
+    unlist() %>% 
+    min()
+}
+
+# Description: this function will keep the first (1:required_length) of entries in each list element 
+
+# e.g. if the input list has elements c(1,2), c(1,5,4,6) and c(1,6,4,5,6,4,3) and we only want the first 2 elements of each vector then this function will modify the elements to c(1,2), c(1,5) and c(1,6)
+adjust_elmnt_lengths <- function (list, required_length) {
+  map(list, ~ .[seq_len(required_length)])
+}
+
+# Description: this function extracts the relevant news titles, summaries and dates for each news article in a given URL. The user need only specify 'page_sequence', which indicates how many pages of data we want to be scraped from 'TheActuary'
+extract_news_data <- function(page_sequence, url_root = "https://www.theactuary.com/news/?p=", title_node = "span.oBoxItemTitle", summary_node = "span.oBoxItemSummary", date_node = "span.oBoxItemDate") {
+  if (missing(page_sequence)) {
+    stop("The number of pages to scrape from must be specified (as a sequence).", call. = FALSE)
+  }
+  
+  tryCatch(
+        
+    {
+      titles <- map(page_sequence, ~ read_html(paste0(news_url_root, .)) %>% html_nodes(title_node) %>% html_text()) 
+      summaries <- map(page_sequence, ~ read_html(paste0(news_url_root, .)) %>% html_nodes(summary_node) %>% html_text())
+      dates <- map(page_sequence, ~ read_html(paste0(news_url_root, .)) %>% html_nodes(date_node) %>% html_text())
+      
+      # note: this is not the most ideal approach - issue is that the number of titles and summaries do not match the number of dates
+      #       thus, to avoid missing data, I've decided to trim down the extra elements in titles and summaries
+      title_summary_date <- list(titles, summaries, dates)
+      min_length <- map(title_summary_date, ~ extract_min_length(.)) %>% unlist() %>% min()
+      title_summary_date_clean <- map(title_summary_date, ~ adjust_elmnt_lengths(., required_length = min_length))
+      
+      return(
+        tibble(title = unlist(title_summary_date_clean[[1]]), 
+               summary = unlist(title_summary_date_clean[[2]]), 
+               date = unlist(title_summary_date_clean[[3]]))
+      )
+    },
+    
+    error = function(cnd) {
+     message("Error: the provided URL or node specifications are not valid.")
+    }
+  )
+}
+
+# there are a maximum of 25 news pages!
+theactuary_raw <- extract_news_data(page_sequence = 1:25)
+```
+
+# Data pre-processing
+
+Now we need to pre-process the date column - this is easily done with lubridate's `dmy` function. We will also focus on news titles initially:
+
+```{r}
+theactuary_titles <- theactuary_raw %>%
+  mutate(date = dmy(date), article_no = row_number()) %>%
+  select(-summary) %>%
+  unnest_tokens(output = keyword, input = title) %>%
+  anti_join(stop_words, by = c("keyword" = "word")) %>%
+  filter(str_detect(keyword, "[a-z]"))
+```
+
+Let's focus on titles first. First, what have been the most common
+
+```{r}
+theactuary_titles %>%
+  count(keyword) %>%
+  mutate(word_prop = n / n()) %>%
+  arrange(desc(word_prop)) %>%
+  top_n(15, word_prop) %>%
+  mutate(keyword = fct_reorder(keyword, word_prop)) %>%
+  ggplot(aes(x = keyword, y = word_prop, fill = word_prop)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_fill_gradient2(low="slateblue2", midpoint = 0.05, high="tomato2") +
+  scale_y_continuous(labels = scales::percent_format(), 
+                     breaks = seq(0, 0.07, 0.01)) +
+  labs(y = "% of titles with given keyword",
+       x = "Keyword",
+       title = "Analysis of headlines from 'TheActuary'",
+       subtitle = "There appears to be a predominant focus on the pensions industry")
+```
+
+We can also consider the concept of 'term-frequency inverse-document-frequency' for each news article title.
+
+```{r}
+theactuary_titles_tfidf <- theactuary_titles %>% 
+  count(article_no, keyword) %>% 
+  bind_tf_idf(keyword, article_no, n) %>% 
+  arrange(desc(tf_idf))
+```
+
