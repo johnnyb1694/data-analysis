@@ -1,0 +1,25 @@
+---
+title: 'Project Gutenberg: Example Analysis'
+author: "Johnny Breen"
+date: "09/04/2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+library(gutenbergr)
+library(tidyverse)
+library(tidytext)
+
+lincoln_raw <- gutenberg_download(2653:2654)
+```
+
+```{r message=FALSE, warning=FALSE}
+lincoln_raw %>%
+  unnest_tokens(output = word, input = text) %>%
+  mutate(unique_id = row_number(), date = ifelse(str_detect(word, regex("\\d{4}")), word, NA_character_)) %>%
+  fill(date) %>%
+  mutate_at(vars(date), .funs = funs(as.numeric)) %>%
+  filter(between(date, 1820, 1865)) %>%
+  count(date, sort = TRUE)
+```
+
