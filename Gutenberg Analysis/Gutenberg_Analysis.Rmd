@@ -14,12 +14,27 @@ lincoln_raw <- gutenberg_download(2653:2654)
 ```
 
 ```{r message=FALSE, warning=FALSE}
-lincoln_raw %>%
+lincoln_clean <- lincoln_raw %>%
   unnest_tokens(output = word, input = text) %>%
   mutate(unique_id = row_number(), date = ifelse(str_detect(word, regex("\\d{4}")), word, NA_character_)) %>%
   fill(date) %>%
   mutate_at(vars(date), .funs = funs(as.numeric)) %>%
-  filter(between(date, 1820, 1865)) %>%
-  count(date, sort = TRUE)
+  filter(between(date, 1832, 1865)) # filter anything that could not be interpreted as a 'date'
+```
+
+```{r message=FALSE}
+lincoln_clean %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(date) %>%
+  summarise(avg_sentiment = mean(score, na.rm = TRUE)) %>%
+  ggplot(aes(x = date, y = avg_sentiment)) +
+  geom_point(aes(colour = avg_sentiment), show.legend = FALSE) +
+  scale_colour_gradient(low = "slateblue", high = "tomato2") +
+  scale_x_continuous(breaks = seq(1830, 1865, 5)) +
+  geom_line(alpha = 0.6) +
+  expand_limits(y = c(-1, 1)) +
+  theme_minimal() +
+  labs(x = "Year of study",
+       y = "Mental score")
 ```
 
