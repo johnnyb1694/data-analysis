@@ -28,7 +28,9 @@ lincoln_clean <- lincoln_raw %>%
   mutate(unique_id = row_number(), date = ifelse(str_detect(word, regex("\\d{4}")), word, NA_character_)) %>%
   fill(date) %>%
   mutate_at(vars(date), .funs = funs(as.numeric)) %>%
-  filter(between(date, 1832, 1865), !str_detect(word, "lincoln")) %>% # filter anything that could not be interpreted as a reasonable 'date' 
+  filter(between(date, 1832, 1865), 
+         !str_detect(word, "lincoln"),
+         str_detect(word, "[a-z]")) %>% # filter anything that could not be interpreted as a reasonable 'date' 
   anti_join(stop_words)
 
 lincoln_clean
@@ -76,26 +78,44 @@ It might also be interesting to track whether there are any words used by Lincol
 To achieve this we fit a logistic regression model to each 'word'. For example, consider the word government:
 
 ```{r}
+date_counts <- lincoln_clean %>%
+  count(date)
+
 lincoln_clean %>%
   add_count(date, word) %>%
-  add_count(date) %>%
+  inner_join(date_counts, by = c("date" = "date")) %>%
   filter(word == "government") %>%
-  arrange(date)
+  arrange(date) %>%
+  group_by(date, word) %>%
+  summarise(successes = sum(n.x), trials = sum(n.y))
+
+lincoln_reg_used_words <- lincoln_clean %>%
+  count(word, date) %>%
+  group_by(word) %>%
+  summarise(total_appearances = n()) %>%
+  filter(total_appearances > 20) %>% 
+  pull(word) # words with at least ten years of data
+  
 ```
 
 We consider the column `n` to reflect the number of mentions (succcesses) in a given year out of the total words written in that year, `nn` (number of trials).
 
 ```{r}
 lincoln_counts <- lincoln_clean %>%
+  filter(word %in% lincoln_reg_used_words) %>%
   select(date, word) %>%
   add_count(date, word) %>%
-  add_count(date) %>%
-  mutate(prop = n / nn)
+  inner_join(date_counts, by = c("date" = "date")) %>%
+  group_by(date, word) %>%
+  summarise(successes = sum(n.x), trials = sum(n.y)) %>%
+  ungroup() %>%
+  mutate(prop_success = successes / trials) %>%
+  filter(trials > 1000) # for statistical significance
 
 lincoln_slopes <- lincoln_counts %>%
   nest(-word) %>%
-  mutate(log_mod = map(data, ~ glm(cbind(n, nn - n) ~ date, family = "binomial", data = .))) %>%
-  unnest(map(log_mod, tidy)) %>%
+  mutate(log_mod = map(data, ~ glm(cbind(successes, trials - successes) ~ date, family = "binomial", data = .))) %>%
+  unnest(map(log_mod, broom::tidy)) %>%
   filter(term == "date") %>%
   arrange(desc(estimate))
 
@@ -111,9 +131,17 @@ lincoln_top_shrinking <- lincoln_slopes %>%
 Let's plot these trends on a separate graph:
 
 ```{r}
+# words which Lincoln began to use more towards the end of his writings
 lincoln_counts %>%
-  filter(word %in% lincoln_words) %>%
-  ggplot(aes(x = date, y = prop, colour = word)) +
+  filter(word %in% lincoln_top_growing) %>%
+  ggplot(aes(x = date, y = prop_success, colour = word)) +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~word)
+
+# words which Lincoln started to use less frequently towards the end of his writings
+lincoln_counts %>%
+  filter(word %in% lincoln_top_shrinking) %>%
+  ggplot(aes(x = date, y = prop_success, colour = word)) +
   geom_line(show.legend = FALSE) +
   facet_wrap(~word)
 ```
