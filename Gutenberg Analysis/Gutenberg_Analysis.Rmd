@@ -9,8 +9,17 @@ output: html_document
 library(gutenbergr)
 library(tidyverse)
 library(tidytext)
+library(broom)
+library(tidymodels)
+library(viridis)
+theme_set(theme_minimal())
 
-lincoln_raw <- gutenberg_download(2653:2654)
+lincoln_raw <- gutenberg_download(2653:2659)
+lincoln_mappings <- gutenberg_metadata %>%
+  select(gutenberg_id, title) %>%
+  filter(between(gutenberg_id, 2653, 2659))
+
+lincoln_mappings
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -19,8 +28,32 @@ lincoln_clean <- lincoln_raw %>%
   mutate(unique_id = row_number(), date = ifelse(str_detect(word, regex("\\d{4}")), word, NA_character_)) %>%
   fill(date) %>%
   mutate_at(vars(date), .funs = funs(as.numeric)) %>%
-  filter(between(date, 1832, 1865)) # filter anything that could not be interpreted as a 'date'
+  filter(between(date, 1832, 1865), !str_detect(word, "lincoln")) %>% # filter anything that could not be interpreted as a reasonable 'date' 
+  anti_join(stop_words)
+
+lincoln_clean
 ```
+
+Let's review the most commonly used words:
+
+```{r}
+lincoln_clean %>%
+  count(word, sort = TRUE) %>%
+  top_n(20, n) %>%
+  mutate(word = fct_reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n, colour = n)) +
+  geom_point() +
+  geom_segment(aes(x = word, xend = word, y = 0, yend = n)) +
+  scale_colour_viridis() +
+  coord_flip() +
+  labs(x = "Word",
+       y = "Frequency",
+       colour = "Count",
+       title = "Word frequency analysis of Lincoln's writings",
+       subtitle = "Key themes include slavery amongst others")
+```
+
+Let's track his sentiments over time:
 
 ```{r message=FALSE}
 lincoln_clean %>%
@@ -28,13 +61,60 @@ lincoln_clean %>%
   group_by(date) %>%
   summarise(avg_sentiment = mean(score, na.rm = TRUE)) %>%
   ggplot(aes(x = date, y = avg_sentiment)) +
-  geom_point(aes(colour = avg_sentiment), show.legend = FALSE) +
-  scale_colour_gradient(low = "slateblue", high = "tomato2") +
+  geom_point(aes(colour = (between(avg_sentiment, -0.5, 0.5)), size = abs(avg_sentiment)), show.legend = FALSE) +
+  geom_line(alpha = 0.75, colour = "black") +
   scale_x_continuous(breaks = seq(1830, 1865, 5)) +
-  geom_line(alpha = 0.6) +
   expand_limits(y = c(-1, 1)) +
-  theme_minimal() +
   labs(x = "Year of study",
-       y = "Mental score")
+       y = "Mental score",
+       title = "Progression of Lincoln's mental state over time",
+       subtitle = "Notice the downturn pre-1855 followed by a sharp upturn towards 1865")
+```
+
+It might also be interesting to track whether there are any words used by Lincoln which became more prominent or less prominent over time.
+
+To achieve this we fit a logistic regression model to each 'word'. For example, consider the word government:
+
+```{r}
+lincoln_clean %>%
+  add_count(date, word) %>%
+  add_count(date) %>%
+  filter(word == "government") %>%
+  arrange(date)
+```
+
+We consider the column `n` to reflect the number of mentions (succcesses) in a given year out of the total words written in that year, `nn` (number of trials).
+
+```{r}
+lincoln_counts <- lincoln_clean %>%
+  select(date, word) %>%
+  add_count(date, word) %>%
+  add_count(date) %>%
+  mutate(prop = n / nn)
+
+lincoln_slopes <- lincoln_counts %>%
+  nest(-word) %>%
+  mutate(log_mod = map(data, ~ glm(cbind(n, nn - n) ~ date, family = "binomial", data = .))) %>%
+  unnest(map(log_mod, tidy)) %>%
+  filter(term == "date") %>%
+  arrange(desc(estimate))
+
+lincoln_top_growing <- lincoln_slopes %>%
+  top_n(10, estimate) %>%
+  pull(word)
+
+lincoln_top_shrinking <- lincoln_slopes %>%
+  top_n(-10, estimate) %>%
+  pull(word)
+```
+
+Let's plot these trends on a separate graph:
+
+```{r}
+lincoln_counts %>%
+  filter(word %in% lincoln_words) %>%
+  ggplot(aes(x = date, y = prop, colour = word)) +
+  geom_line(show.legend = FALSE) +
+  facet_wrap(~word)
 ```
 
