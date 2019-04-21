@@ -4,23 +4,45 @@ author: "Johnny Breen"
 date: "09/04/2019"
 output: html_document
 ---
+# Preamble on 'Project Gutenberg'
+
+It's been a little while since I've practiced text mining so I thought I would analyse some textual data provided by Project Gutenberg. In case you were not aware, Project Gutenberg consists of various articles and literary contributions (amongst other things) written, in the main, by authors whose works are now in the US public domain and largely exempt from any copyright infringement. For the UK, the law is that copyright applies to somebody else's work until [70 years after their date of death](https://www.gov.uk/copyright/how-long-copyright-lasts). 
+
+Luckily for us, there is a package in R, [gutenbergr](https://cran.r-project.org/web/packages/gutenbergr/vignettes/intro.html), which allows you to easily download and access written articles stored within the Project Gutenberg database within the click of a button!
+
+# Background
+
+Upon inspecting the various repositories of data available to me in Project Gutenberg, I became rather fascinated by the prospect of analysing Abraham Lincoln's various letters and writings composed between the years 1832 and 1865 (Lincoln's year of death). I don't particularly know much about Abraham Lincoln, I'm ashamed to say, but I wanted to see how much I could learn about the former president by simply performing a short text-mining exercise on the extensive repository of written letters he managed to create over the course of his political career.
+
+# Preliminaries
+
+First, we load the necessary packages for this short analysis - I've added a comment besides each package to explain how it is used within the remainder of this article:
 
 ```{r message=FALSE, warning=FALSE}
-library(gutenbergr)
-library(tidyverse)
-library(tidytext)
-library(tidymodels)
-library(igraph)
-library(ggraph)
-theme_set(theme_minimal())
+library(gutenbergr) # allows you to download articles stored within the Project Gutenberg database
+library(tidyverse) # includes various data manipulation packages, most notably 'tidyr' and 'dplyr'
+library(tidytext) # facilitates text mining
+library(broom) # allows you to 'tidy' model outputs into a tibble format
+library(igraph) # allows you to plot 'network' objects
+library(ggraph) # can be thought of as an 'igraph' addon which simply translates base plots into ggplot formats
 
-lincoln_raw <- gutenberg_download(2653:2659)
+theme_set(theme_minimal()) # sets a global theme for ggplot2 visualisations
+```
+
+# Data cleansing & exploratory data analysis
+
+
+
+```{r}
+lincoln_raw <- gutenberg_download(2653:2659) # ids 2653 to 2659 encode Lincoln's writings between 1832 and 1865
 lincoln_mappings <- gutenberg_metadata %>%
   select(gutenberg_id, title) %>%
   filter(between(gutenberg_id, 2653, 2659))
 
 lincoln_mappings
 ```
+
+First let's clean the data.
 
 ```{r message=FALSE, warning=FALSE}
 lincoln_clean <- lincoln_raw %>%
@@ -30,7 +52,7 @@ lincoln_clean <- lincoln_raw %>%
   mutate_at(vars(date), .funs = funs(as.numeric)) %>%
   filter(between(date, 1832, 1865), 
          !str_detect(word, "lincoln"),
-         str_detect(word, "[a-z]")) %>% # filter anything that could not be interpreted as a reasonable 'date' 
+         str_detect(word, "[a-z]")) %>%  
   anti_join(stop_words)
 
 lincoln_clean
@@ -174,7 +196,7 @@ lincoln_clean_bigrams %>%
   filter(n > 50) %>%
   graph_from_data_frame(directed = TRUE) %>%
   ggraph(layout = "nicely") +
-  geom_node_point(colour = "turquoise", size = 5) +
+  geom_node_point(colour = "lightblue", size = 4) +
   geom_edge_link(aes(edge_alpha = n), 
                  arrow = arrow(type = "closed", length = unit(.15, "inches")), 
                  end_cap = circle(.07, 'inches'), show.legend = FALSE) +
@@ -184,4 +206,5 @@ lincoln_clean_bigrams %>%
        subtitle = "The transparency of the arrow reflects the frequency of usage")
   
 ```
+
 
