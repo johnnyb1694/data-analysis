@@ -1,0 +1,63 @@
+---
+title: "Teacher-Student Ratio Analysis"
+author: "Johnny Breen"
+date: "18/05/2019"
+output: github_document
+---
+
+# Read in data
+
+```{r}
+library(tidyverse)
+# we use 'ts' to refer to 'teacher-student'
+ts_ratio_raw <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-07/student_teacher_ratio.csv")
+
+ts_ratio_raw 
+```
+
+# EDA
+
+How many countries do we have:
+
+```{r}
+ts_ratio_raw %>%
+  count(country) %>%
+  arrange(desc(n))
+```
+
+We have 232 'countries' represented - although as you can see some of these are not countries, for example 'World'. There's a bit too many values to represent on a graph but we can see that there is a wide variety of countries here.
+
+Let's have a look at the representation of different education levels:
+
+```{r}
+ts_ratio_raw %>%
+  ggplot(aes(x = indicator)) +
+  geom_bar(width = 0.5) +
+  theme(axis.text.x = element_text(angle = 45, size = 7, hjust = 1))
+```
+
+There appears to be a fairly even distribution of different education levels.
+
+```{r}
+ts_ratio_rsq <- ts_ratio_raw %>%
+  add_count(country) %>%
+  filter(n > 10, !is.na(student_ratio), !is.na(year)) %>%
+  nest(-country) %>%
+  mutate(mod = map(data, ~ summary(lm(year ~ student_ratio, data = .)))) %>%
+  mutate(rsq = map_dbl(mod, "r.squared")) %>%
+  arrange(desc(rsq))
+
+ts_ratio_rsq %>%
+  top_n(15, rsq) %>%
+  mutate(sd_ts_ratio = map_dbl(data, ~ sd(.$student_ratio, na.rm = TRUE))) %>%
+  mutate(norm_sd_ts_ratio = (sd_ts_ratio - mean(sd_ts_ratio)) / sd(sd_ts_ratio)) %>%
+  ggplot(aes(x = rsq, y = norm_sd_ts_ratio)) +
+  geom_point(aes(colour = country)) +
+  theme_light() +
+  labs(x = "Teacher-student ratio time correspondence (R-squared)",
+       y = "Normalised yearly variation in student-teacher ratio",
+       colour = "Country",
+       title = )
+```
+
+
