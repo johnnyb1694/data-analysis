@@ -18,7 +18,7 @@ ts_ratio_raw
 
 # Exploratory data analysis
 
-How many countries do we have:
+First, let's have a little look at how many countries we are working with:
 
 ```{r}
 ts_ratio_raw %>%
@@ -51,7 +51,7 @@ fit_mod <- function(df, ord = 1) {
 
 ts_ratio_rsq <- ts_ratio_raw %>%
   add_count(country) %>%
-  filter(n > 10, !is.na(student_ratio), !is.na(year)) %>% # filter on countries with at least 10 years of data
+  filter(n > 10, !is.na(student_ratio), !is.na(year)) %>% # filter on countries with at least 10 data points
   nest(-country) %>%
   mutate(linear_mod = map(data, ~ fit_mod(df = .)),
          linear_mod_summary = map(linear_mod, ~ summary(.)),
@@ -59,6 +59,7 @@ ts_ratio_rsq <- ts_ratio_raw %>%
          linear_mod_nobs = map_int(data, ~ nrow(.))) %>%
   arrange(desc(linear_mod_rsq))
 
+# top 15 r-squared
 ts_ratio_rsq %>%
   mutate(country = fct_reorder(country, linear_mod_rsq)) %>%
   top_n(15, linear_mod_rsq) %>%
@@ -66,21 +67,67 @@ ts_ratio_rsq %>%
   geom_point(aes(colour = country, size = linear_mod_nobs)) +
   expand_limits(y = c(0, 1)) +
   coord_flip() +
-  labs(y = "R-squared value",
+  labs(y = "R-squared",
        x = "Country",
-       title = "Top 15 R-squared values, split by country",
-       subtitle = "Results of regressing student-teacher ratio on year (linearly)",
+       title = "Top 15 most consistent nations",
+       subtitle = "Results of regressing student-teacher ratios on time",
        size = "Number of observations") +
   guides(colour = "none")
 ```
 
-Based on this, Hong Kong appears to be demonstrating a fairly consistent change over time. However, as we can see from the plot, this is based on a relatively smaller volume of data when compared with various other countries. It is key to note that the number of observations here does not necessarily reflect the number of years available because some countries have data on a greater number of education levels than others but as at the same year (for instance, primary and secondary education figures in 2012).
+Based on this, Hong Kong appears to be demonstrating a fairly consistent change over time. However, there are some limitations with this approach:
 
-Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a two-way classification:
+1. We're lumping different education categories together. This is OK if all we care about is aggregate progress but do you remember the `indicator` variable which reflect education levels? Hong Kong, for instance, has two different trajectories for two different education levels:
 
-* Countries with a *high* volatility but a *low* linear correlation experience more unstable student-teacher ratios with no consistent decrease or increase in ratios over time;
-* Countries with a *low* volatility
+    ```{r}
+  ts_ratio_raw %>%
+      filter(str_detect(country, "Hong Kong")) %>%
+      ggplot(aes(x = year, y = student_ratio)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      facet_wrap(~indicator) +
+      labs(x = "Year",
+           y = "Student-teacher ratio",
+           title = "Student-teacher ratios in Hong Kong spread over time",
+           subtitle = "Split by education level shows markedly different progressions")
+    ```
 
+2. Our results are based on various volumes of data - we can have a bit more confidence in the Republic of Korea or the Dominican Republic but can't really say much about Aruba at all.
+
+3. We cannot see whether the R-squared value reflects *progresson* or *regression* - i.e. are student-teacher ratios improving in these countries or getting worse?
+
+It is also key to note that the number of observations here does not necessarily reflect the number of years available because some countries have data on a greater number of education levels than others but as at the same year (for instance, primary and secondary education figures in 2012).
+
+We can improve on this. Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a multi-classification of different countries - for instance, a country with a highly negative ratio-year correlation and a high volatility reflects rapid improvement (remember, we want the ratios to *decrease* over time so that teachers have less students to cater to):
+
+```{r message=FALSE, warning=FALSE}
+library(ggrepel)
+ts_ratio_raw %>%
+  nest(-c("country", "indicator")) %>%
+  mutate(linear_corr = map_dbl(data, ~ cor(.$student_ratio, .$year, use = "pairwise.complete.obs")),
+         volatility = map_dbl(data, ~ sd(.$student_ratio, na.rm = TRUE)),
+         nobs = map_int(data, ~ nrow(.))) %>%
+  filter(nobs > 5, !indicator %in% c("World")) %>% 
+  ggplot(aes(x = linear_corr, y = volatility)) +
+  geom_point(aes(size = nobs, colour = indicator)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_label_repel(data = . %>% filter(abs(linear_corr) > 0.5, volatility > 4.0),
+             aes(label = country), size = 2.25) +
+  facet_wrap(~indicator) +
+  expand_limits(x = c(-1, 1)) +
+  guides(colour = "none") +
+  labs(x = "Correlation between student-teacher ratio and time",
+       y = "Volatility of student-teacher ratios",
+       size = "Number of observations",
+       title = "Summary of student-teacher ratio volatilities over time",
+       subtitle = "Negative correlations and high volatilities are desirable e.g. Gambia") +
+  theme(strip.text.x = element_text(size = 6.5))
+  
+```
+
+# How is this ratio affected by government spending?
+
+One approach here is to extract all of the necessary covariates associated with student-teacher ratios and investigate which of them are statistically significant:
 
 ```{r}
 # read in government spending data - downloaded from the relevant source online
