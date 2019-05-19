@@ -9,13 +9,14 @@ output: github_document
 
 ```{r}
 library(tidyverse)
+theme_set(theme_light())
 # we use 'ts' to refer to 'teacher-student'
 ts_ratio_raw <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-07/student_teacher_ratio.csv")
 
 ts_ratio_raw 
 ```
 
-# EDA
+# Exploratory data analysis
 
 How many countries do we have:
 
@@ -32,32 +33,67 @@ Let's have a look at the representation of different education levels:
 ```{r}
 ts_ratio_raw %>%
   ggplot(aes(x = indicator)) +
-  geom_bar(width = 0.5) +
-  theme(axis.text.x = element_text(angle = 45, size = 7, hjust = 1))
+  geom_bar(width = 0.5, show.legend = FALSE, aes(fill = indicator)) +
+  theme(axis.text.x = element_text(angle = 45, size = 7, hjust = 1)) +
+  labs(x = "Education Level",
+       y = "Frequency",
+       title = "Distribution of education levels")
 ```
 
 There appears to be a fairly even distribution of different education levels.
 
+Let's have a little look at how the teacher-student ratios correlate (on a linear basis) with time. This will tell us which countries are showing the most consistent changes (good or bad) over time:
+
 ```{r}
+fit_mod <- function(df, ord = 1) {
+  lm(year ~ I(student_ratio^ord), data = df)
+}
+
 ts_ratio_rsq <- ts_ratio_raw %>%
   add_count(country) %>%
-  filter(n > 10, !is.na(student_ratio), !is.na(year)) %>%
+  filter(n > 10, !is.na(student_ratio), !is.na(year)) %>% # filter on countries with at least 10 years of data
   nest(-country) %>%
-  mutate(mod = map(data, ~ summary(lm(year ~ student_ratio, data = .)))) %>%
-  mutate(rsq = map_dbl(mod, "r.squared")) %>%
-  arrange(desc(rsq))
+  mutate(linear_mod = map(data, ~ fit_mod(df = .)),
+         linear_mod_summary = map(linear_mod, ~ summary(.)),
+         linear_mod_rsq = map_dbl(linear_mod_summary, "r.squared"),
+         linear_mod_nobs = map_int(data, ~ nrow(.))) %>%
+  arrange(desc(linear_mod_rsq))
 
 ts_ratio_rsq %>%
-  top_n(15, rsq) %>%
-  mutate(sd_ts_ratio = map_dbl(data, ~ sd(.$student_ratio, na.rm = TRUE))) %>%
-  mutate(norm_sd_ts_ratio = (sd_ts_ratio - mean(sd_ts_ratio)) / sd(sd_ts_ratio)) %>%
-  ggplot(aes(x = rsq, y = norm_sd_ts_ratio)) +
-  geom_point(aes(colour = country)) +
-  theme_light() +
-  labs(x = "Teacher-student ratio time correspondence (R-squared)",
-       y = "Normalised yearly variation in student-teacher ratio",
-       colour = "Country",
-       title = )
+  mutate(country = fct_reorder(country, linear_mod_rsq)) %>%
+  top_n(15, linear_mod_rsq) %>%
+  ggplot(aes(x = country, y = linear_mod_rsq)) +
+  geom_point(aes(colour = country, size = linear_mod_nobs)) +
+  expand_limits(y = c(0, 1)) +
+  coord_flip() +
+  labs(y = "R-squared value",
+       x = "Country",
+       title = "Top 15 R-squared values, split by country",
+       subtitle = "Results of regressing student-teacher ratio on year (linearly)",
+       size = "Number of observations") +
+  guides(colour = "none")
 ```
 
+Based on this, Hong Kong appears to be demonstrating a fairly consistent change over time. However, as we can see from the plot, this is based on a relatively smaller volume of data when compared with various other countries. It is key to note that the number of observations here does not necessarily reflect the number of years available because some countries have data on a greater number of education levels than others but as at the same year (for instance, primary and secondary education figures in 2012).
+
+Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a two-way classification:
+
+* Countries with a *high* volatility but a *low* linear correlation experience more unstable student-teacher ratios with no consistent decrease or increase in ratios over time;
+* Countries with a *low* volatility
+
+
+```{r}
+# read in government spending data - downloaded from the relevant source online
+ts_spend_raw <- read_csv("EDULIT_DS_19052019035546163.csv")
+ts_spend_clean <- ts_spend_raw %>%
+  transmute(indicator = str_remove(Indicator, "Government expenditure on "),
+                                             indicator = str_remove(indicator, ", US\\$ \\(millions\\)"),
+                                             indicator = str_to_title(indicator),
+            country_code = LOCATION,
+            year = Time,
+            spending_us_dollars = Value)
+
+ts_joined <- ts_ratio_raw %>%
+  left_join(ts_spend_clean, by = c("indicator", "country_code", "year"))
+```
 
