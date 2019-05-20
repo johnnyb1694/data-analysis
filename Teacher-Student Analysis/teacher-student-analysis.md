@@ -1,19 +1,19 @@
----
-title: "Teacher-Student Ratio Analysis"
-author: "Johnny Breen"
-date: "18/05/2019"
-output: github_document
----
+Teacher-Student Ratio Analysis
+================
+Johnny Breen
+18/05/2019
 
-# Introduction
+Introduction
+============
 
 In this segment we perform a brief analysis of data on student-teacher ratios across countries worldwide.
 
-# Data import
+Data import
+===========
 
 Let's read in the data from the github repo:
 
-```{r warning=FALSE, message=FALSE}
+``` r
 library(tidyverse)
 theme_set(theme_light())
 # we use 'ts' to refer to 'teacher-student'
@@ -22,21 +22,52 @@ ts_ratio_raw <- readr::read_csv("https://raw.githubusercontent.com/rfordatascien
 ts_ratio_raw 
 ```
 
-# Exploratory data analysis
+    ## # A tibble: 5,189 x 8
+    ##    edulit_ind indicator country_code country  year student_ratio flag_codes
+    ##    <chr>      <chr>     <chr>        <chr>   <int>         <dbl> <chr>     
+    ##  1 PTRHC_2    Lower Se… MRT          Maurit…  2013         56.6  <NA>      
+    ##  2 PTRHC_2    Lower Se… MRT          Maurit…  2014         51.9  <NA>      
+    ##  3 PTRHC_2    Lower Se… MRT          Maurit…  2015         53.2  <NA>      
+    ##  4 PTRHC_2    Lower Se… MRT          Maurit…  2016         38.2  <NA>      
+    ##  5 PTRHC_1    Primary … COD          Democr…  2012         34.7  <NA>      
+    ##  6 PTRHC_1    Primary … COD          Democr…  2013         37.1  <NA>      
+    ##  7 PTRHC_1    Primary … COD          Democr…  2014         35.3  <NA>      
+    ##  8 PTRHC_1    Primary … COD          Democr…  2015         33.2  <NA>      
+    ##  9 PTRHC_3    Upper Se… SYR          Syrian…  2013          8.47 <NA>      
+    ## 10 PTRHC_02   Pre-Prim… GNQ          Equato…  2012         17.5  <NA>      
+    ## # … with 5,179 more rows, and 1 more variable: flags <chr>
+
+Exploratory data analysis
+=========================
 
 First, let's have a little look at how many countries we are working with:
 
-```{r}
+``` r
 ts_ratio_raw %>%
   count(country) %>%
   arrange(desc(n))
 ```
 
+    ## # A tibble: 232 x 2
+    ##    country                                        n
+    ##    <chr>                                      <int>
+    ##  1 Latin America and the Caribbean               60
+    ##  2 Small Island Developing States                60
+    ##  3 World                                         60
+    ##  4 Austria                                       42
+    ##  5 China, Macao Special Administrative Region    42
+    ##  6 Holy See                                      42
+    ##  7 Uzbekistan                                    42
+    ##  8 Ghana                                         40
+    ##  9 Bahrain                                       39
+    ## 10 Mexico                                        39
+    ## # … with 222 more rows
+
 We have 232 'countries' represented - although as you can see some of these are not countries, for example 'World'. There's a bit too many values to represent on a graph but we can see that there is a wide variety of countries here.
 
 Next, let's have a look at the representation of different education levels:
 
-```{r}
+``` r
 ts_ratio_raw %>%
   ggplot(aes(x = indicator)) +
   geom_bar(width = 0.5, show.legend = FALSE, aes(fill = indicator)) +
@@ -46,11 +77,13 @@ ts_ratio_raw %>%
        title = "Distribution of education levels")
 ```
 
+![](teacher-student-analysis_files/figure-markdown_github/unnamed-chunk-3-1.png)
+
 There appears to be a fairly even distribution of different education levels.
 
 Let's have a little look at how the teacher-student ratios correlate (on a linear basis) with time. This will tell us which countries are showing the most consistent changes (good or bad) over time:
 
-```{r}
+``` r
 fit_mod <- function(df, ord = 1) {
   lm(year ~ I(student_ratio^ord), data = df)
 }
@@ -81,12 +114,14 @@ ts_ratio_rsq %>%
   guides(colour = "none")
 ```
 
+![](teacher-student-analysis_files/figure-markdown_github/unnamed-chunk-4-1.png)
+
 Based on this, Hong Kong appears to be demonstrating a fairly consistent change over time. However, there are some limitations with this approach:
 
-1. We're lumping different education categories together. This is OK if all we care about is aggregate progress but do you remember the `indicator` variable which reflect education levels? Hong Kong, for instance, has two different trajectories for two different education levels:
+1.  We're lumping different education categories together. This is OK if all we care about is aggregate progress but do you remember the `indicator` variable which reflect education levels? Hong Kong, for instance, has two different trajectories for two different education levels:
 
-    ```{r}
-  ts_ratio_raw %>%
+    ``` r
+      ts_ratio_raw %>%
       filter(str_detect(country, "Hong Kong")) %>%
       ggplot(aes(x = year, y = student_ratio)) +
       geom_point() +
@@ -98,15 +133,17 @@ Based on this, Hong Kong appears to be demonstrating a fairly consistent change 
            subtitle = "Split by education level shows markedly different progressions")
     ```
 
-2. Our results are based on various volumes of data - we can have a bit more confidence in the Republic of Korea or the Dominican Republic but can't really say much about Aruba at all.
+    ![](teacher-student-analysis_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
-3. We cannot see whether the R-squared value reflects *progresson* or *regression* - i.e. are student-teacher ratios improving in these countries or getting worse?
+2.  Our results are based on various volumes of data - we can have a bit more confidence in the Republic of Korea or the Dominican Republic but can't really say much about Aruba at all.
+
+3.  We cannot see whether the R-squared value reflects *progresson* or *regression* - i.e. are student-teacher ratios improving in these countries or getting worse?
 
 It is also key to note that the number of observations here does not necessarily reflect the number of years available because some countries have data on a greater number of education levels than others but as at the same year (for instance, primary and secondary education figures in 2012).
 
 We can improve on this. Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a multi-classification of different countries - for instance, a country with a highly negative ratio-year correlation and a high volatility reflects rapid improvement (remember, we want the ratios to *decrease* over time so that teachers have less students to cater to):
 
-```{r message=FALSE, warning=FALSE}
+``` r
 ts_ratio_corrs <- ts_ratio_raw %>%
   nest(-c("country", "indicator")) %>%
   mutate(linear_corr = map_dbl(data, ~ cor(.$student_ratio, .$year, use = "pairwise.complete.obs")),
@@ -130,16 +167,34 @@ ts_ratio_corrs %>%
        title = "Summary of student-teacher ratio volatilities over time",
        subtitle = "Negative correlations and high volatilities are desirable e.g. Gambia") +
   theme(strip.text.x = element_text(size = 6.5))
-  
 ```
 
-# How is this ratio affected by government spending?
+![](teacher-student-analysis_files/figure-markdown_github/unnamed-chunk-6-1.png)
+
+How is this ratio affected by government spending?
+==================================================
 
 One approach here is to extract all of the necessary covariates associated with student-teacher ratios and investigate which of them are statistically significant:
 
-```{r}
+``` r
 # read in government spending data - downloaded from the relevant source online
 ts_spend_raw <- read_csv("EDULIT_DS_19052019035546163.csv")
+```
+
+    ## Parsed with column specification:
+    ## cols(
+    ##   EDULIT_IND = col_character(),
+    ##   Indicator = col_character(),
+    ##   LOCATION = col_character(),
+    ##   Country = col_character(),
+    ##   TIME = col_integer(),
+    ##   Time = col_integer(),
+    ##   Value = col_double(),
+    ##   `Flag Codes` = col_character(),
+    ##   Flags = col_character()
+    ## )
+
+``` r
 ts_spend_clean <- ts_spend_raw %>%
   transmute(indicator = str_remove(Indicator, "Government expenditure on "),
                                              indicator = str_remove(indicator, ", US\\$ \\(millions\\)"),
@@ -151,4 +206,3 @@ ts_spend_clean <- ts_spend_raw %>%
 ts_joined <- ts_ratio_raw %>%
   left_join(ts_spend_clean, by = c("indicator", "country_code", "year"))
 ```
-
