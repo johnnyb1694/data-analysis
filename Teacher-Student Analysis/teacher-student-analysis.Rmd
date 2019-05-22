@@ -7,14 +7,17 @@ output: github_document
 
 # Introduction
 
-In this segment we perform a brief analysis of data on student-teacher ratios across countries worldwide.
+In this segment we perform a brief analysis of data on student-teacher ratios across countries worldwide - the data is from the [tidytuesday](https://github.com/rfordatascience/tidytuesday/blob/master/data/2019/2019-05-07/readme.md) segment on github. 
+
+Limited by time constraints and actuarial exams, this is a relatively short post; however, it showcases some of the functional tools you can use in `purrr` to make your code more powerful. 
 
 # Data import
 
-Let's read in the data from the github repo:
+Let's first read in the data from the github repo:
 
 ```{r warning=FALSE, message=FALSE}
 library(tidyverse)
+library(ggrepel)
 theme_set(theme_light())
 # we use 'ts' to refer to 'teacher-student'
 ts_ratio_raw <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-05-07/student_teacher_ratio.csv")
@@ -24,7 +27,7 @@ ts_ratio_raw
 
 # Exploratory data analysis
 
-First, let's have a little look at how many countries we are working with:
+First, let's have a little look at how many countries are contained in the dataset:
 
 ```{r}
 ts_ratio_raw %>%
@@ -32,7 +35,7 @@ ts_ratio_raw %>%
   arrange(desc(n))
 ```
 
-We have 232 'countries' represented - although as you can see some of these are not countries, for example 'World'. There's a bit too many values to represent on a graph but we can see that there is a wide variety of countries here.
+We have 232 'countries' represented - although as you can see some of these are not countries, for example 'World'. 
 
 Next, let's have a look at the representation of different education levels:
 
@@ -46,9 +49,9 @@ ts_ratio_raw %>%
        title = "Distribution of education levels")
 ```
 
-There appears to be a fairly even distribution of different education levels.
+There appears to be a fairly even distribution of different education levels which will be useful if we plan to use this variable as a graphical facetting feature.
 
-Let's have a little look at how the teacher-student ratios correlate (on a linear basis) with time. This will tell us which countries are showing the most consistent changes (good or bad) over time:
+Let's have a little look at how the teacher-student ratios correlate (on a linear basis) with time. This will tell us which countries are showing the most consistent changes (good or bad) over time - to do this, we fit a series of linear models to each country in the dataset using `map_*()` functions from the package `purrr`:
 
 ```{r}
 fit_mod <- function(df, ord = 1) {
@@ -65,7 +68,7 @@ ts_ratio_rsq <- ts_ratio_raw %>%
          linear_mod_nobs = map_int(data, ~ nrow(.))) %>%
   arrange(desc(linear_mod_rsq))
 
-# top 15 r-squared
+# top 15 r-squared values
 ts_ratio_rsq %>%
   mutate(country = fct_reorder(country, linear_mod_rsq)) %>%
   top_n(15, linear_mod_rsq) %>%
@@ -104,7 +107,7 @@ Based on this, Hong Kong appears to be demonstrating a fairly consistent change 
 
 It is also key to note that the number of observations here does not necessarily reflect the number of years available because some countries have data on a greater number of education levels than others but as at the same year (for instance, primary and secondary education figures in 2012).
 
-We can improve on this. Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a multi-classification of different countries - for instance, a country with a highly negative ratio-year correlation and a high volatility reflects rapid improvement (remember, we want the ratios to *decrease* over time so that teachers have less students to cater to):
+Perhaps a better way to represent the data above would be to plot the volatility of student-teacher ratios on the y axis and ratio-year correlations on the x axis. This gives way to a multi-classification of different countries - for instance, a country with a highly negative ratio-year correlation and a high volatility reflects rapid improvement (remember, ratios which *decrease* over time represent increasingly smaller student-teacher ratios so that teachers have less students to cater to):
 
 ```{r message=FALSE, warning=FALSE}
 ts_ratio_corrs <- ts_ratio_raw %>%
@@ -113,11 +116,10 @@ ts_ratio_corrs <- ts_ratio_raw %>%
          volatility = map_dbl(data, ~ sd(.$student_ratio, na.rm = TRUE)),
          nobs = map_int(data, ~ nrow(.)))
 
-library(ggrepel)
 ts_ratio_corrs %>%
   filter(nobs > 5, !indicator %in% c("World")) %>% 
   ggplot(aes(x = linear_corr, y = volatility)) +
-  geom_point(aes(size = nobs, colour = indicator)) +
+  geom_point(aes(size = nobs, colour = indicator), alpha = 0.75) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   geom_label_repel(data = . %>% filter(abs(linear_corr) > 0.5, volatility > 4.0),
              aes(label = country), size = 2.25) +
@@ -133,22 +135,27 @@ ts_ratio_corrs %>%
   
 ```
 
-# How is this ratio affected by government spending?
-
-One approach here is to extract all of the necessary covariates associated with student-teacher ratios and investigate which of them are statistically significant:
+Each point in the series of plots above represents a different country. I've higlighted countries which have a suitably high combination of high correlation and volaility. Notice how, for instance, Gambia has a relatively high volatility score as well as a highly negative correlation, suggesting that it is making more rapid improvements than other countries in the area of lower secondary education. This is unsurprisingly backed up by the underlying data:
 
 ```{r}
-# read in government spending data - downloaded from the relevant source online
-ts_spend_raw <- read_csv("EDULIT_DS_19052019035546163.csv")
-ts_spend_clean <- ts_spend_raw %>%
-  transmute(indicator = str_remove(Indicator, "Government expenditure on "),
-                                             indicator = str_remove(indicator, ", US\\$ \\(millions\\)"),
-                                             indicator = str_to_title(indicator),
-            country_code = LOCATION,
-            year = Time,
-            spending_us_dollars = Value)
-
-ts_joined <- ts_ratio_raw %>%
-  left_join(ts_spend_clean, by = c("indicator", "country_code", "year"))
+ts_ratio_raw %>%
+  filter(country == "Gambia", indicator == "Lower Secondary Education") %>%
+  select(education_category = indicator, country, year, student_ratio)
 ```
 
+The graphical plot also sheds light on poorly performing nations, such as Bhutan in the area of primary education where we can observe a visible increase in student-teacher ratios over time:
+
+```{r}
+ts_ratio_raw %>%
+  filter(country == "Bhutan", indicator == "Primary Education") %>%
+  select(education_category = indicator, country, year, student_ratio)
+```
+
+# Conclusion
+
+In this extremely short segment we were able to:
+
+* Identify a set of countries whose student-teacher ratio trajectories were broadly linear, thus identifying the consistently improving nations; and
+* Identify which countries are improving fastest and which countries are travelling in the opposite direction
+
+The interested reader could easily augment this analysis by acquiring sovereign data and analysing it in conjunction with the student-teacher ratios presented above - for instance, are these ratios influenced by government spending? Or is there another factor at play here?
