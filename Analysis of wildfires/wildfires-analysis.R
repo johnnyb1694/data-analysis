@@ -18,6 +18,10 @@ wildfires_clean <- wildfires_raw %>%
   as_tibble()
 
 wildfires_clean %>%
+  group_by(Area) %>%
+  mutate(wildfires_no = n()) %>%
+  ungroup() %>%
+  mutate(Area = fct_reorder(Area, wildfires_no)) %>%
   ggplot(aes(x = Area, y = Year)) + 
   geom_jitter(aes(size = area), alpha = 0.50) + 
   coord_flip() +
