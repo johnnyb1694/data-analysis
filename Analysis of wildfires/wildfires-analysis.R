@@ -1,13 +1,13 @@
-
-
 library(maps)
 library(tidyverse)
+library(rvest)
+library(xml2)
 
 tables <- read_html("https://en.wikipedia.org/wiki/List_of_wildfires") %>% 
   html_nodes("table") %>% 
   html_table(fill = TRUE)
 
-theme_set(theme_light(base_size = 10, base_family = "Arial"))
+wildfires_raw <- tables[[3]]
 
 wildfires_clean <- wildfires_raw %>% 
   mutate(area = str_extract(Size, pattern = ".+\\s(?=acres)"),
@@ -16,6 +16,8 @@ wildfires_clean <- wildfires_raw %>%
          killed = as.numeric(str_remove_all(killed, ","))) %>%
   select(-Size) %>%
   as_tibble()
+
+theme_set(theme_light(base_size = 10, base_family = "Arial"))
 
 wildfires_clean %>%
   group_by(Area) %>%
