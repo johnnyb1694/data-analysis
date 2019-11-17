@@ -35,14 +35,50 @@ emp_clean <- emp_raw %>%
                            (birth - ymd("0000-01-01")) + (death - ymd("0000-01-01")),
                            (death - birth)) / 365.25,
          length_of_reign = ifelse(reign_period == "BC",(reign_start - ymd("0000-01-01")) + (reign_end - ymd("0000-01-01")),
-                                  (reign_end - reign_start)) / 365.25,
-         avg_reign = reign_start + length_of_reign*365.25 / 2)
+                                  (reign_end - reign_start)) / 365.25)
 
 #### Explore data ####
 
 extrafont::loadfonts()
 
-theme_set(theme_light(base_size = 9, base_family = "Arial"))
+theme_set(theme_light(base_size = 10, base_family = "Arial"))
+
+## Explore counts ##
+
+# Each emperor lived longer than the average for the time
+emp_clean %>% 
+  ggplot(aes(x = length_of_life)) + 
+  geom_histogram(bins = 30) + 
+  expand_limits(x = c(0, 100)) + 
+  geom_vline(xintercept = 35, linetype = "dashed") # 35 years of age was the average at the time
+
+# Political upheaval was more common throughout the Gordian dynasty
+emp_clean %>%
+  add_count(dynasty) %>%
+  filter(n > 1) %>%
+  ggplot(aes(x = dynasty, y = length_of_reign, colour = dynasty)) +
+  geom_point(alpha = 0.25, show.legend = FALSE) +
+  stat_summary(fun.y = mean, geom = "point", size = 5, show.legend = FALSE) +
+  scale_color_nejm() +
+  coord_flip() +
+  labs(y = "Length of reign (years)",
+       x = NULL) +
+  theme(panel.grid = element_blank())
+
+
+
+#### Archived code..#####
+emp_clean %>%
+  nest(-killer) %>%
+  mutate(n_obs = map_int(data, ~ nrow(.))) %>%
+  filter(n_obs > 1) %>%
+  mutate(t_test = map(data, ~ t.test(.$length_of_reign))) %>%
+  mutate(t_test_tidy = map(t_test, ~ broom::tidy(.))) %>%
+  unnest(t_test_tidy) %>%
+  mutate(conf.low = ifelse(conf.low < 0, 0, conf.low)) %>%
+  ggplot() +
+  geom_point(aes(x = estimate, y = killer)) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, y = killer))
 
 emp_clean %>%
   group_by(killer) %>%
@@ -51,12 +87,10 @@ emp_clean %>%
   ggplot() +
   geom_point(aes(x = avg_reign, y = killer))
 
-emp_clean %>%
-  nest(-cause) %>%
-  mutate(n_obs = map_int(data, ~ nrow(.))) %>%
-  filter(n_obs > 1) %>%
-  mutate(t_test = map(data, ~ t.test(.$length_of_reign))) %>%
-  mutate(t_test_tidy = map(t_test, ~ broom::tidy(.))) %>%
-  unnest(t_test_tidy)
+emp_clean %>% 
+  ggplot(aes(x = length_of_life, y = length_of_reign)) + 
+  geom_point(aes(colour = rise), show.legend = FALSE) + 
+  facet_wrap(~rise)
+  
 
 
