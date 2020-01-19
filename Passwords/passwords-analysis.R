@@ -48,38 +48,42 @@ passwords_clean <- passwords_raw %>%
                           length * log(36, base = 2),
                           length * log(26, base = 2)),
          common = map_dbl(password, ~ check_if_common(.))) %>% 
-  modify_at(c("category", "length"), ~ as.factor(.)) %>%
+  modify_at(c("category"), ~ as.factor(.)) %>%
   select(rank, password, category, common, online_crack_sec, offline_crack_sec, length, entropy)
 
 ## Analyse data ##
+
+passwords_stats <- passwords_clean %>%
+  group_by(category) %>%
+  summarise(mean_crack_sec = mean(offline_crack_sec, na.rm = TRUE),
+            median_crack_sec = median(offline_crack_sec, na.rm = TRUE),
+            var_crack_sec = var(offline_crack_sec, na.rm = TRUE),
+            count = n(),
+            common_count = sum(common, na.rm = TRUE),
+            mean_length = mean(as.numeric(length), na.rm = TRUE))
+
+# Finding: length matters!
+passwords_clean %>%
+  mutate(length_bracket = ifelse(length <= 7, "<= 7 characters", "> 7 characters")) %>%
+  group_by(length_bracket) %>%
+  summarise(mean_secs = mean(offline_crack_sec, na.rm = T),
+            count = n()) %>%
+  ggplot(aes(x = length_bracket, y = mean_secs, size = count)) +
+  geom_point() +
+  coord_flip() +
+  labs(x = NULL,
+       y = "Seconds to crack")
+
+# Finding: the number of common words appearing in your password matters too - in this case, the difference
+#          in the mean cracking time is about 0.70 seconds, or about 4.4 times as long to crack
+passwords_clean %>%
+  group_by(common) %>%
+  summarise(mean_secs = mean(offline_crack_sec, na.rm = T))
+
+# Finding: 
 passwords_conf <- passwords_clean %>% 
   nest(-category) %>% 
   mutate(t_test = map(data, ~ t.test(.$offline_crack_sec)), tidy_results = map(t_test, ~ tidy(.))) %>% 
   unnest(tidy_results) %>% 
   select(category, conf_low = conf.low, conf_mid = estimate, conf_high = conf.high) %>% 
   arrange(desc(conf_mid))
-
-passwords_stats <- passwords_clean %>%
-  group_by(category) %>%
-  summarise(mean_crack_sec = mean(offline_crack_sec, na.rm = TRUE),
-            var_crack_sec = var(offline_crack_sec, na.rm = TRUE),
-            common_count = sum(common, na.rm = TRUE),
-            mean_length = mean(as.numeric(length), na.rm = TRUE))
-
-# Finding: whilst 'password-related' passwords are seemingly the best of all 'bad passwords', there 
-#            is considerable uncertainty in this. In fact, the uncertainty appears to decrease 
-#            directly in line with the average number of seconds required to crack a given password category
-passwords_stats %>% 
-  mutate(category = fct_reorder(category, mean_crack_sec)) %>% 
-  ggplot(aes(mean_crack_sec, category)) + 
-  geom_point(aes(alpha = 1 / var_crack_sec, colour = common_count), size = 4.5, show.legend = FALSE) + 
-  labs(x = "Average seconds to crack", y = NULL) + 
-  scale_colour_gradient(low = "slateblue2", high = "tomato2")
-
-# Finding: so-called 'fluffy' passwords are the 'worst of the worst' passwords! This is primarily
-#          because these passwords have a considerably smaller average length than those presented
-#          in the other category of passwords
-passwords_stats %>%
-  arrange(mean_length)
-
-# Finding: 
