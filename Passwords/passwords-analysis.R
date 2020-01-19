@@ -62,7 +62,7 @@ passwords_stats <- passwords_clean %>%
             common_count = sum(common, na.rm = TRUE),
             mean_length = mean(as.numeric(length), na.rm = TRUE))
 
-# Finding: length matters!
+# Finding: length matters, a lot!
 passwords_clean %>%
   mutate(length_bracket = ifelse(length <= 7, "<= 7 characters", "> 7 characters")) %>%
   group_by(length_bracket) %>%
@@ -80,10 +80,9 @@ passwords_clean %>%
   group_by(common) %>%
   summarise(mean_secs = mean(offline_crack_sec, na.rm = T))
 
-# Finding: 
-passwords_conf <- passwords_clean %>% 
-  nest(-category) %>% 
-  mutate(t_test = map(data, ~ t.test(.$offline_crack_sec)), tidy_results = map(t_test, ~ tidy(.))) %>% 
-  unnest(tidy_results) %>% 
-  select(category, conf_low = conf.low, conf_mid = estimate, conf_high = conf.high) %>% 
-  arrange(desc(conf_mid))
+# Finding: you might assume that password-related passwords would be the worst. Indeed, there
+#          were some funny password-related passwords cropping up in this dataset. Just take a look!
+
+
+# Finding: nonetheless, it doesn't really matter what category of password you choose. It's more important to
+#          exclude common words from your password, irrespective of password category
