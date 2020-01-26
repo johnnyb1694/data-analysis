@@ -8,7 +8,7 @@
 # https://docs.google.com/spreadsheets/d/1cz7TDhm0ebVpySqbTvrHrD3WpxeyE4hLZtifWSnoNTQ/edit#gid=21
 
 ## Load required packages ##
-packages <- c("tidyverse", "broom", "extrafont", "reshape2")
+packages <- c("tidyverse", "broom", "extrafont", "ggwordcloud")
 for (pkg in packages) {
   if (!pkg %in% installed.packages()) {
     install.packages(pkg, dependencies = TRUE)
@@ -95,6 +95,23 @@ most_popular_pwds %>%
         plot.subtitle = element_text(size = 10),
         plot.caption = element_text(size = 8, colour = "gray50"))
 
+# Finding: if using a passsword-related password is the worst thing you can do, then using your own name must 
+#          come a close second!
+cloud_data <- passwords_clean %>%
+  filter(category %in% c("name")) %>%
+  top_n(n = 20, wt = 1 / entropy)
+
+ggplot(cloud_data, aes(label = password, colour = rank, size = 1 / rank)) +
+  geom_text_wordcloud(area_corr = TRUE) +
+  scale_colour_gradient(low = "tomato1", high = "slateblue1") +
+  labs(title = "Which names appear most often in 'bad passwords'?",
+       subtitle = "A chance to name and shame those closest to you!",
+       caption = "Source: 'Information is Beautiful'") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 12, face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        plot.caption = element_text(size = 8, colour = "gray50"))
+
 # Finding: the number of common words appearing in your password does matter - in this case, the difference
 #          in the mean cracking time is about 0.70 seconds, or about 4.4 times as long to crack. However
 #          it's important not to overstate this fact. The difference here is being driven by outliers
@@ -112,7 +129,7 @@ passwords_clean %>%
   labs(x = NULL,
        y = "Password strength ('Entropy')",
        title = "The effect of word commonality on password strength",
-       subtitle = "Including uncommon words in your password can provide\nyou with an advantage",
+       subtitle = "Including uncommon words in your password can provide\nyou with a marginal advantage",
        caption = "Source: 'Information is Beautiful'") +
   theme(legend.position = "none",
         plot.title = element_text(size = 12, face = "bold"),
@@ -122,17 +139,32 @@ passwords_clean %>%
 
 # Finding: nonetheless, it doesn't really matter what category of password you choose. It's slightly more important to
 #          exclude common words from your password, irrespective of password category. But, 
-#          the length of the password trumps everything
+#          the length of the password trumps everything!
+
+arrows <- tibble(x_start = c(1.6, 1),
+                 y_start = c(1.4, 1.8),
+                 x_end = c(2, 0.90),
+                 y_end = c(0.30, 3.3))
 
 passwords_clean %>%
   modify_at("length", ~ as.numeric(as.character(.))) %>%
-  mutate(length_bracket = ifelse(length <= 7, "<= 7 characters", "> 7 characters")) %>%
+  mutate(length_bracket = ifelse(length <= 7, "Shorter than 7 characters", "Longer than 7 characters")) %>%
   group_by(length_bracket) %>%
   summarise(mean_secs = mean(offline_crack_sec, na.rm = T),
             count = n()) %>%
-  ggplot(aes(x = length_bracket, y = mean_secs, size = count)) +
-  geom_point() +
-  coord_flip() +
+  ggplot(aes(x = length_bracket, y = mean_secs, size = count, colour = length_bracket)) +
+  geom_point(show.legend = FALSE) +
   labs(x = NULL,
-       y = "Seconds to crack",
-       size = "Count")
+       y = "Average time to crack offline (seconds)",
+       title = "Password length versus seconds to crack",
+       subtitle = "Aim to maximise the length of your password next time round - it is a sensitive input parameter!",
+       size = "Count") +
+  geom_curve(data = arrows, aes(x = x_start, y = y_start, xend = x_end, yend = y_end),
+             arrow = arrow(length = unit(0.08, "inch")), size = 0.5,
+             colour = "gray50", curvature = -0.6) +
+  annotate("text", x = 1.2, y = 1.2, size = 3.5, colour = "gray20", label = "The size of each point\n corresponds to the relative\n frequency in the dataset") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 12, face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        plot.caption = element_text(size = 8, colour = "gray50"),
+        panel.grid = element_blank())
