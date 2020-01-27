@@ -60,6 +60,20 @@ extrafont::loadfonts()
 # Set theme
 theme_set(theme_light(base_size = 11, base_family = "Arial"))
 
+# Initial plot of trial passwords, ‘Tr0ub4dor&3’ and ‘correcthorsebatterystaple’
+trial_pwds <- tibble(pwd = c("Tr0ub4dor&3", "correcthorsebatterystaple"),
+                     strength = str_length(pwd) * log2(36),
+                     x = c(0.20, 0.80),
+                     y = c(0.6, 0.6))
+
+ggplot(data = trial_pwds, mapping = aes(x, y)) +
+  geom_text(mapping = aes(label = pwd), show.legend = F, size = 4.5) +
+  expand_limits(y = c(0, 1), x = c(0, 1)) +
+  geom_vline(xintercept = 0.45, linetype = "dotted") +
+  theme_void() +
+  theme(plot.caption = element_text(size = 8, colour = "gray50")) +
+  labs(caption = "Source: 'Information is Beautiful'")
+
 entropy_avg <- mean(passwords_clean$entropy, na.rm = TRUE)
 entropy_min <- min(passwords_clean$entropy, na.rm = TRUE)
 entropy_by_commonality <- passwords_clean %>% 
