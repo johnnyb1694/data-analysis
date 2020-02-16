@@ -62,3 +62,29 @@ spotify_pca_data <- spotify_numerics %>%
 # Now let's apply PCA then summarise the results
 spotify_pca <- prcomp(spotify_pca_data)
 summary(spotify_pca)
+
+spotify_PC1 <- spotify_pca$x[,"PC1"]
+spotify_PC2 <- spotify_pca$x[,"PC2"]
+
+# We can visualise the results by adding the results back onto our data-frame!
+# Sadly, there doesn't seem to be enough variance explained by a reduction in dimensionality
+spotify_clean <- spotify_clean %>%
+  mutate(prcomp_1 = spotify_PC1, prcomp_2 = spotify_PC2)
+
+spotify_clean %>%
+  ggplot(aes(x = prcomp_1, y = prcomp_2, colour = release_year)) +
+  geom_point(alpha = 0.50) 
+
+spotify_pca$rotation[,"PC1"] %>%
+  enframe() %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_point()
+
+## Analysis of sentiment in songs
+
+afinn_lexicon <- get_sentiments("afinn")
+
+spotify_clean %>%
+  select(track_id, track_name) %>%
+  unnest_tokens(output = "word", input = "track_name") %>%
+  left_join(afinn_lexicon)
