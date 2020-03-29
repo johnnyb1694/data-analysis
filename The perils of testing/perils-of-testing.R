@@ -47,13 +47,45 @@ compute_posterior(p_A = disease_coverage, p_BA = test_accuracy, p_BAc = false_po
 # Visual explanation ----
 
 # Imagine that our population consists of 10,000 individuals. This means that there are 500 individuals carrying 
-# the fictitious disease in our population. We apply our test to our entire population.
+# the fictitious disease in our population. We apply our test to the entire population.
+population_size <- 1000
+
+v <- rep(10, 100)
+
+for (s in seq(20, 100, 10)) {
+  # Don't copy this practice! It's a short-term fix
+  v <- c(v, rep(s, 100))
+}
+
+population_data <- tibble(individual = 1:population_size, 
+                          actual_status = c(rep("Carrier", 0.05*population_size), rep("Healthy", 0.95 * population_size)),
+                          x = rep(seq(1, 100), 10),
+                          y = v,
+                          class = )
+
+population_data %>%
+  ggplot(aes(x, y)) +
+  geom_point(aes(colour = actual_status)) +
+  theme_void() +
+  labs(title = "Our population",
+       subtitle = "The red dots represent the actual carriers of the disease",
+       colour = "Actual status")
 
 # Given the parameters of the test, we end up with 495 individuals being correctly identified as carrying the virus.
-# In addition, we end up falsely identifying 500 individuals as positive. 
+# In addition, we end up falsely identifying 475 individuals as positive. 
+population_data %>%
+  ggplot(aes(x, y)) +
+  geom_point(aes(colour = actual_status)) +
+  theme_void() +
+  labs(title = "Our population",
+       subtitle = "The red dots represent the actual carriers of the disease",
+       colour = "Actual status")
 
-# As a result, we end up with 995 individuals who have all tested positive, yet only 495 of these individuals are
-# indeed positive. It should be clearer to you now as to why our actual probabilty of being positive is lower
+# As a result, we end up with 970 individuals who have all tested positive, yet only 495 of these individuals are
+# indeed positive. So, actually only 51.03% of those who tested positive are *actually* positive.
+
+# This particular example just demonstrates how poorly human beings are able to interpret probabilities.
+
 # than we first imagined.
 
 # Sensitivity analysis ----
@@ -66,9 +98,10 @@ sensitivity_fp_rate <- tibble(false_positive_sequence = seq(from = 0.01, to = 0.
                                                            p_BAc = false_positive_sequence))
 
 sensitivity_fp_rate %>%
+  mutate(prob_misdiagnosis = 1 - posterior_prob) %>%
   ggplot(aes(x = false_positive_sequence,
-             y = posterior_prob)) +
-  geom_point(aes(colour = posterior_prob, size = posterior_prob), show.legend = F) +
+             y = prob_misdiagnosis)) +
+  geom_point(aes(colour = prob_misdiagnosis, size = prob_misdiagnosis), show.legend = F) +
   geom_line(alpha = 0.75, show.legend = F) +
   scale_colour_continuous(low = "tomato2", high = "slateblue1") +
   scale_y_continuous(labels = scales::percent_format(),
@@ -77,8 +110,8 @@ sensitivity_fp_rate %>%
                      breaks = seq(0.01, 0.15, 0.02)) +
   expand_limits(y = 0) +
   labs(x = "False positive rate",
-       y = "Probability of being disease carrier",
-       title = "Probability of carrying disease versus false positive rate",
+       y = "Probability of misdiagnosing healthy case",
+       title = "Probability of misdiagnosis versus false positive rate",
        subtitle = "Tests with a low specificity tend to misdiagnose many healthy cases")
 
 # However, another important factor is how prevalent the underlying disease is in the population.
@@ -89,9 +122,10 @@ sensitivity_coverage <- tibble(coverage_sequence = seq(from = 0.01, to = 0.15, b
                                                                  p_BAc = false_positive_rate))
 
 sensitivity_coverage %>%
+  mutate(prob_misdiagnosis = 1 - posterior_prob) %>%
   ggplot(aes(x = coverage_sequence,
-             y = posterior_prob)) +
-  geom_point(aes(colour = posterior_prob, size = posterior_prob), show.legend = F) +
+             y = prob_misdiagnosis)) +
+  geom_point(aes(colour = prob_misdiagnosis, size = prob_misdiagnosis), show.legend = F) +
   geom_line(alpha = 0.75, show.legend = F) +
   scale_colour_continuous(low = "tomato2", high = "slateblue1") +
   scale_y_continuous(labels = scales::percent_format(),
@@ -100,6 +134,6 @@ sensitivity_coverage %>%
                      breaks = seq(0.01, 0.15, 0.02)) +
   expand_limits(y = 0) +
   labs(x = "Prevalence of disease (amongst population)",
-       y = "Probability of being disease carrier",
-       title = "Probability of carrying disease versus disease prevalence",
+       y = "Probability of misdiagnosing healthy case",
+       title = "Probability of misdiagnosis versus disease prevalence",
        subtitle = "Tests aimed at identifying common diseases are generally more reliable")
