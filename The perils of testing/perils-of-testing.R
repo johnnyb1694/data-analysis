@@ -9,9 +9,9 @@
 # The next day you receive your results: your doctor informs you that you have tested positive
 # for a very serious disease that only affects approximately 5% of the global population.
 
-# "The test", your doctor informs you, "is 99% accurate. Statistics show that it's only wrong 5 times out of 100 on otherwise healthy patients."
+# "The test", your doctor informs you, "is 98% accurate. Statistics show that it's only wrong 4 times out of 100 on otherwise healthy patients."
 
-# You fall to your knees: "99% accurate? It's got to be right, surely?"
+# You fall to your knees: "98% accurate? It's got to be right, surely?"
 
 # Or is it?
 
@@ -32,8 +32,8 @@ theme_set(theme_light(base_size = 12, base_family = "Arial"))
 
 # Under the following assumptions, the posterior probability of being positive is only around ~ 51.03%
 disease_coverage <- 0.05
-test_accuracy <- 0.99
-false_positive_rate <- 0.05
+test_accuracy <- 0.98
+false_positive_rate <- 0.04
 
 # Calculation ----
 
@@ -49,7 +49,7 @@ compute_posterior(p_A = disease_coverage, p_BA = test_accuracy, p_BAc = false_po
 
 # Imagine that our population consists of 10,000 individuals. This means that there are 500 individuals carrying 
 # the fictitious disease in our population. We apply our test to the entire population.
-population_size <- 10000
+population_size <- 1000
 
 v <- rep(55, 100)
 
@@ -78,7 +78,7 @@ population_data %>%
 # Given the parameters of the test, we end up with 495 individuals being correctly identified as carrying the virus.
 # In addition, we end up falsely identifying 475 individuals as positive. 
 population_data %>%
-  mutate(test_result = c(rep("Positive", 49), "Negative", rep("Positive", 48), rep("Negative", 902))) %>%
+  mutate(test_result = c(rep("Positive", 49), "Negative", rep("Positive", 38), rep("Negative", 912))) %>%
   ggplot(aes(x, y)) +
   geom_point(aes(colour = actual_status, shape = test_result), size = 2.0) +
   theme_void() + 
