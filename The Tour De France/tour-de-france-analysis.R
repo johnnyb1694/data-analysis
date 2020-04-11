@@ -18,6 +18,7 @@ library(lubridate)
 library(repurrrsive)
 library(scales)
 library(stringr)
+library(ggrepel)
 
 theme_set(theme_light(base_size = 11, base_family = "Arial"))
 
@@ -95,17 +96,58 @@ stage_results %>%
 stages %>%
   count(Type, sort = T)
 
-# The most difficult mountain stages are shown below
+# The most difficult mountain stages are shown below in descending order of difficulty
 mountain_stages <- stages %>%
-  filter(Type == "Stage with mountain(s)") %>%
+  filter(str_detect(Type, regex("Mountain", ignore_case = T))) %>%
   arrange(desc(Distance)) %>%
   transmute(stage_results_id = str_c("stage-", Stage),
             year = year(Date),
             distance = Distance,
-            origin = Origin,
-            destination = Destination) %>%
-  slice(1:20)
+            journey = str_c(Origin, " to ", Destination, ", ", year, " (", distance, "km)"))
 
+most_difficult_by_year <- mountain_stages %>%
+  group_by(year) %>%
+  summarise(max_distance = max(distance, na.rm = T))
+
+most_difficult_by_year_all <- mountain_stages %>%
+  left_join(most_difficult_by_year, by = "year") %>%
+  mutate(most_difficult = ifelse(distance == max_distance, T, F)) %>%
+  filter(most_difficult) %>%
+  select(-max_distance, -most_difficult)
+
+top_10 <- most_difficult_by_year_all %>%
+  arrange(desc(distance)) %>%
+  slice(1:10)
+
+# This following plot is quite striking: there were some very tricky mountain stages in the early 1900s
+# Of course, we've also seen that the overall distance covered across the whole tour was also very high back then
+# All of this means that the Tour De France has always been an extremely difficult event to compete in
+mountain_plot_data <- most_difficult_by_year_all %>%
+  mutate(rank = ifelse(journey %in% top_10$journey, "Inside top 10", "Outside top 10")) 
+
+ggplot(data = mountain_plot_data, mapping = aes(year, distance)) +
+  geom_hline(yintercept = min(top_10$distance), colour = "red", lty = "dashed", alpha = 0.50) +
+  geom_point(aes(colour = rank, alpha = distance)) +
+  geom_label_repel(aes(label = journey), data = mountain_plot_data %>% filter(rank == "Inside top 10") %>% arrange(desc(distance)) %>% slice(1:2),
+                   size = 3) +
+  labs(title = "The most difficult mountain stages (shown in red), split by year",
+       subtitle = "Back in the early 1900s, riders dealt with extraordinarily difficult mountain stages",
+       x = "Year",
+       y = "Distance (km)",
+       caption = "Source: 'tdf' package") +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(face = "bold"),
+        plot.caption = element_text(colour = "darkgray"),
+        legend.position = "none")
+
+# Next, we shall investigate the average speed sustained by the winners of these difficult mountain stages
+
+# Also, let's look at how the number of stages has increased over time
+stages %>% 
+  mutate(year = year(Date)) %>% 
+  count(year, sort = T) %>%
+  ggplot(aes(x = year, y = n)) +
+  geom_point()
 
 
   
