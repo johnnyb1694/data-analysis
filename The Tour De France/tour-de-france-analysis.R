@@ -19,6 +19,7 @@ library(repurrrsive)
 library(scales)
 library(stringr)
 library(ggrepel)
+library(gridExtra)
 
 theme_set(theme_light(base_size = 11, base_family = "Arial"))
 
@@ -37,58 +38,70 @@ winners %>%
   count(nationality, sort = T)
 
 # The total distance travelled over time has decreased
-winners %>%
+dist_plot <- winners %>%
   mutate(winning_year = year(start_date)) %>%
   ggplot(aes(winning_year, distance)) +
   geom_point(alpha = 0.60) +
-  geom_smooth() +
-  labs(x = "Edition year",
+  geom_smooth(colour = "orange") +
+  labs(x = "Year",
        y = "Distance travelled (km)",
-       title = "Total distance travelled versus edition year",
-       subtitle = "Riders are travelling shorter and shorter distances") +
-  theme(plot.title = element_text(face = "bold"))
+       title = "Change in the total distance travelled each year",
+       subtitle = "Riders are travelling shorter and shorter distances overall",
+       caption = "Source: 'tdf' package") +
+  theme(plot.title = element_text(face = "bold"),
+        plot.caption = element_text(colour = "darkgray"),
+        panel.grid = element_blank())
 
 # However, the margin of winning has also got closer over time, indicating that races are becoming tighter
-winners %>%
+margin_plot <- winners %>%
   mutate(winning_year = year(start_date)) %>%
   ggplot(aes(winning_year, time_margin)) +
   geom_point(alpha = 0.60) +
   geom_smooth(colour = "tomato2") +
-  labs(x = "Edition year",
+  labs(x = "Year",
        y = "Time margin",
-       title = "Margin of win versus edition year",
-       subtitle = "Races are getting closer and closer") +
-  theme(plot.title = element_text(face = "bold"))
+       title = "Change in the margin of win each year",
+       subtitle = "Races are getting closer and closer",
+       caption = "Source: 'tdf' package") +
+  theme(plot.title = element_text(face = "bold"),
+        plot.caption = element_text(colour = "darkgray"),
+        panel.grid = element_blank()) 
+
+# Aggregate plot of both the above plots on the same page
+grid.arrange(dist_plot, margin_plot)
 
 # Contrary to expectations, one can win the Tour De France without winning all of the stages
+central <- count(winners, stage_wins, sort = T) %>% 
+  summarise(n_median = median(n)) %>%
+  pull()
+
+arrows <- tibble(x_start = 5,
+                 y_start = 1.75,
+                 x_end = 7.5,
+                 y_end = 0)
+
 winners %>%
   count(stage_wins, sort = T) %>%
-  mutate(stage_wins = fct_reorder(as.factor(stage_wins), n)) %>%
+  mutate(above_median = ifelse(n > central, "Above average", "Below average")) %>%
   ggplot(aes(n, stage_wins)) +
-  geom_point(aes(colour = n), alpha = 0.60, show.legend = F, size = 5) +
-  geom_segment(aes(x = 0, xend = n, y = stage_wins, yend = stage_wins), lty = "dashed", colour = "darkgray") +
+  geom_point(aes(colour = above_median), show.legend = F, size = 5) +
+  geom_segment(aes(x = central, xend = n, y = stage_wins, yend = stage_wins), colour = "darkgray", lty = "dotted") +
   scale_x_continuous(breaks = seq(0, 25, 5)) +
-  scale_colour_continuous(low = "slateblue2", high = "tomato2") +
+  scale_y_continuous(breaks = 0:8) +
+  geom_vline(xintercept = central) +
+  geom_curve(data = arrows, aes(x = x_start, y = y_start, xend = x_end, yend = y_end),
+             arrow = arrow(length = unit(0.08, "inch")), size = 0.5,
+             colour = "gray50", curvature = 0.3) +
   labs(y = "Number of stages won",
-       x = "Number of winners ",
-       title = "Distribution of stages won across all Tour De France winners",
-       subtitle = "Most winners of the coveted yellow jersey only win 1 to 4 stages",
+       x = "Number of winners",
+       title = "Distribution of the number of stages won by each Tour De France winner",
+       subtitle = "Most winners of the Tour De France only win 1 to 4 stages (in red)",
        caption = "Source: 'tdf' package") +
+  annotate("text", x = 5, y = 2, size = 3, colour = "gray20", label = "Some winners don't even win a single stage!") +
   theme(panel.grid = element_blank(),
         plot.title = element_text(face = "bold"),
-        plot.caption = element_text(colour = "darkgray"))
-
-#### Analysis of stage results ----
-
-# The average age of participants hasn't changed much over time
-stage_results %>%
-  group_by(year) %>%
-  summarise(mean_age = mean(age, na.rm = T),
-            count = n()) %>%
-  ggplot(aes(year, mean_age)) + 
-  geom_point(aes(alpha = count)) +
-  geom_line() +
-  expand_limits(y = 0)
+        plot.caption = element_text(colour = "darkgray")) +
+  scale_colour_manual(values = c("tomato2", "orange"))
 
 #### Analysis of stages ----
 
@@ -103,6 +116,7 @@ mountain_stages <- stages %>%
   transmute(stage_results_id = str_c("stage-", Stage),
             year = year(Date),
             distance = Distance,
+            winner = Winner,
             journey = str_c(Origin, " to ", Destination, ", ", year, " (", distance, "km)"))
 
 most_difficult_by_year <- mountain_stages %>%
@@ -126,7 +140,7 @@ mountain_plot_data <- most_difficult_by_year_all %>%
   mutate(rank = ifelse(journey %in% top_10$journey, "Inside top 10", "Outside top 10")) 
 
 ggplot(data = mountain_plot_data, mapping = aes(year, distance)) +
-  geom_hline(yintercept = min(top_10$distance), colour = "red", lty = "dashed", alpha = 0.50) +
+  geom_hline(yintercept = min(top_10$distance), colour = "tomato2", lty = "dashed") +
   geom_point(aes(colour = rank, alpha = distance)) +
   geom_label_repel(aes(label = journey), data = mountain_plot_data %>% filter(rank == "Inside top 10") %>% arrange(desc(distance)) %>% slice(1:2),
                    size = 3) +
@@ -138,16 +152,48 @@ ggplot(data = mountain_plot_data, mapping = aes(year, distance)) +
   theme(panel.grid = element_blank(),
         plot.title = element_text(face = "bold"),
         plot.caption = element_text(colour = "darkgray"),
-        legend.position = "none")
+        legend.position = "none") +
+  scale_colour_manual(values = c("tomato2", "orange"))
 
-# Next, we shall investigate the average speed sustained by the winners of these difficult mountain stages
+# One thing that winners have in common is that they do well on the mountain stages
+winner_stage_types <- stages %>% 
+  inner_join(winners, by = c("Winner" = "winner_name")) %>% 
+  count(Type, sort = T, name = "winner_count") %>%
+  mutate(`Tour De France winner` = winner_count / sum(winner_count)) %>%
+  select(-winner_count)
 
-# Also, let's look at how the number of stages has increased over time
-stages %>% 
-  mutate(year = year(Date)) %>% 
-  count(year, sort = T) %>%
-  ggplot(aes(x = year, y = n)) +
-  geom_point()
+all_stage_types <- stages %>% 
+  anti_join(winners, by = c("Winner" = "winner_name")) %>%
+  count(Type, sort = T, name = "regular_count") %>%
+  mutate(`Regular participant` = regular_count / sum(regular_count)) %>%
+  select(-regular_count)
+
+all_stage_types %>%
+  left_join(winner_stage_types, by = "Type") %>%
+  mutate(type_class = case_when(str_detect(Type, regex("mountain", ignore_case = T)) ~ "Mountain-based stage",
+                                str_detect(Type, regex("time trial", ignore_case = T)) ~ "Time trial",
+                                TRUE ~ "Other stage")) %>%
+  group_by(type_class) %>%
+  summarise(`Tour De France winner` = sum(`Tour De France winner`, na.rm = T),
+            `Regular participant` = sum(`Regular participant`, na.rm = T)) %>%
+  gather(key = "prop_type", value = "prop", 2:3) %>%
+  mutate(type_class = fct_reorder(type_class, -prop)) %>%
+  ggplot(aes(x = type_class, y = prop, fill = prop_type)) +
+  geom_col(position = "dodge", width = 0.3) +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = "",
+       y = "Representation (%) in stage type",
+       caption = "Source: 'tdf' package",
+       fill = "Classification",
+       title = "Distribution of participants across stage types",
+       subtitle = "Tour De France winners tend to win stage types that rely on their individual strength") +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(face = "bold"),
+        plot.caption = element_text(colour = "darkgray")) +
+  scale_fill_manual(values = c("orange", "tomato2"))
+  
+
 
 
   
