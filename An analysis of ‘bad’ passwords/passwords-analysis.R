@@ -22,7 +22,7 @@ common_words_url <- 'https://raw.githubusercontent.com/first20hours/google-10000
 passwords_raw <- read_csv(file = passwords_url)
 common_words_raw <- read_csv(file = common_words_url, col_names = FALSE)
 
-## Pre-process data ##
+## Pre-process data ##
 common_words <- pull(common_words_raw)
 
 check_if_common <- function(x) {
