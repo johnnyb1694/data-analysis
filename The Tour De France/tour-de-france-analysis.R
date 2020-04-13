@@ -46,29 +46,39 @@ dist_plot <- winners %>%
   labs(x = "Year",
        y = "Distance travelled (km)",
        title = "Change in the total distance travelled each year",
-       subtitle = "Riders are travelling shorter and shorter distances overall",
+       subtitle = "Riders are travelling shorter and shorter distances overall (LOESS fit)",
        caption = "Source: 'tdf' package") +
   theme(plot.title = element_text(face = "bold"),
         plot.caption = element_text(colour = "darkgray"),
         panel.grid = element_blank())
 
 # However, the margin of winning has also got closer over time, indicating that races are becoming tighter
-margin_plot <- winners %>%
-  mutate(winning_year = year(start_date)) %>%
+arrow_margin <- tibble(x_start = 1940,
+                y_start = 1,
+                x_end = 1930,
+                y_end = 1)
+
+winners %>%
+  mutate(winning_year = year(start_date),
+         teams = ifelse(winning_year < 1930, "Before", "After")) %>%
   ggplot(aes(winning_year, time_margin)) +
-  geom_point(alpha = 0.60) +
-  geom_smooth(colour = "tomato2") +
+  geom_point(aes(colour = teams), alpha = 0.60) +
+  geom_smooth(colour = "black") +
+  geom_vline(xintercept = 1930, lty = "dashed", colour = "gray20") +
   labs(x = "Year",
-       y = "Time margin",
+       y = "Time margin (Hours)",
        title = "Change in the margin of win each year",
-       subtitle = "Races are getting closer and closer",
-       caption = "Source: 'tdf' package") +
+       subtitle = "The margin between first and second place is getting closer and closer (LOESS fit)",
+       caption = "Source: 'tdf' package",
+       colour = "Introduction of teams") +
+  geom_curve(data = arrow_margin, aes(x = x_start, y = y_start, xend = x_end, yend = y_end),
+             arrow = arrow(length = unit(0.08, "inch")), size = 0.5,
+             colour = "gray20", curvature = 0) +
+  annotate("text", x = 1955, y = 1, size = 3, colour = "gray20", label = "The concept of 'teams' is introduced\n in the Tour De France") +
   theme(plot.title = element_text(face = "bold"),
         plot.caption = element_text(colour = "darkgray"),
-        panel.grid = element_blank()) 
-
-# Aggregate plot of both the above plots on the same page
-grid.arrange(dist_plot, margin_plot)
+        panel.grid = element_blank()) +
+  scale_colour_manual(values = c("tomato2", "orange"))
 
 # Contrary to expectations, one can win the Tour De France without winning all of the stages
 central <- count(winners, stage_wins, sort = T) %>% 
@@ -80,7 +90,7 @@ arrows <- tibble(x_start = 5,
                  x_end = 7.5,
                  y_end = 0)
 
-winners %>%
+plot_2 <- winners %>%
   count(stage_wins, sort = T) %>%
   mutate(above_median = ifelse(n > central, "Above average", "Below average")) %>%
   ggplot(aes(n, stage_wins)) +
@@ -139,7 +149,7 @@ top_10 <- most_difficult_by_year_all %>%
 mountain_plot_data <- most_difficult_by_year_all %>%
   mutate(rank = ifelse(journey %in% top_10$journey, "Inside top 10", "Outside top 10")) 
 
-ggplot(data = mountain_plot_data, mapping = aes(year, distance)) +
+plot_3 <- ggplot(data = mountain_plot_data, mapping = aes(year, distance)) +
   geom_hline(yintercept = min(top_10$distance), colour = "tomato2", lty = "dashed") +
   geom_point(aes(colour = rank, alpha = distance)) +
   geom_label_repel(aes(label = journey), data = mountain_plot_data %>% filter(rank == "Inside top 10") %>% arrange(desc(distance)) %>% slice(1:2),
@@ -168,7 +178,7 @@ all_stage_types <- stages %>%
   mutate(`Regular participant` = regular_count / sum(regular_count)) %>%
   select(-regular_count)
 
-all_stage_types %>%
+plot_4 <- all_stage_types %>%
   left_join(winner_stage_types, by = "Type") %>%
   mutate(type_class = case_when(str_detect(Type, regex("mountain", ignore_case = T)) ~ "Mountain-based stage",
                                 str_detect(Type, regex("time trial", ignore_case = T)) ~ "Time trial",
