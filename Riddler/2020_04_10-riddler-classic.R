@@ -22,19 +22,41 @@ theme_set(theme_light(base_family = "Arial", base_size = 10))
 # Calculations ----
 
 # Input parameters
-l <- 1
-t <- 3
-shape <- l*t
 sims <- 1
 
 # Basic plot of Poisson distribution (on a daily basis, according to a rate of 1 spam comment per day)
-tibble(x = 0:10, p_x = dpois(x, l)) %>%
+tibble(x = 0:10, p_x = dpois(x, 1)) %>%
   ggplot(aes(x, p_x)) +
   geom_point() +
   geom_line()
 
-# Generation of one simulation
+# Generation of simulations
 set.seed(123)
 
-rpois(n = sims, lambda = shape) %>%
-  rpois(n = ., lambda = shape)
+simulate_trial <- function(l = 1, t = 3) {
+  rexp(n = 100, rate = 1 / (l*t)) %>% 
+    cumsum() %>% 
+    keep(~ .x < t)
+}
+
+recurse <- function(trial_results, n) {
+  
+  if (n == 0) {
+    
+    tmp_results <- simulate_trial()
+    recurse(trial_results = tmp_results, n = 1)
+    
+  } else {
+    
+    results_length <- length(trial_results) # e.g. we spotted 2 instances of spam comments
+    
+    for (i in seq_len(results_length)) {
+      simulate_trial(l = 1, t = 3 - trial_results[[i]])
+    }
+  }
+
+}
+
+
+
+
