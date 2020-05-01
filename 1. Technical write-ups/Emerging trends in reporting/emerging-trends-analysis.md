@@ -18,8 +18,10 @@ library(tidyverse)
 library(tidytext)
 library(lubridate) # for working with dates and times
 library(zoo) # for the rollmean() function
+library(extrafont)
 
 theme_set(theme_light())
+loadfonts()
 ```
 
 Import article metadata
@@ -27,9 +29,11 @@ Import article metadata
 
 Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types.
 
-In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today):
+In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes.
 
 ``` r
+# Clearly, the following path will not work on your local system (amend accordingly)
+data_path <- "/Users/Johnny/Desktop/Data Science/R/Project NY Times/Extractor script/article-extractions/2020_1-to-4-extract.csv"
 archive_raw <- read_csv(file = data_path)
 
 glimpse(archive_raw)
@@ -45,7 +49,7 @@ glimpse(archive_raw)
     ## $ section             <chr> "U.S.", "Arts", "Movies", "Opinion", "Fashio…
     ## $ word_count          <dbl> 1015, 1015, 2076, 1145, 1958, 1422, 1220, 13…
 
-As you can see, we have a total of 28,535 observations split across 7 different variables, spanning the period from 1 January 2020 to 30 April 2020. I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes.
+As you can see, we have a total of 28,535 observations split across 7 different variables, spanning the period from 1 January 2020 to 30 April 2020.
 
 Data pre-processing
 -------------------
@@ -79,7 +83,9 @@ archive_unnested <- archive_clean %>%
 Exploratory analysis
 --------------------
 
-Let's first examine the elephant in the room: just how did COVID-19 grow over time? It turns out that it follows a predictable logistic growth pattern:
+Let's first examine the elephant in the room: how did the reporting of the coronavirus emerge over time? Was it a gradual linear increase or did it exhibit a slightly more exponential period of growth?
+
+It turns out that it follows a predictable logistic growth pattern, up until a certain point (specifically, the point of lockdown in the U.S. which occurred on the 17th of March 2020). From that point onwards, reporting has somewhat stabilised:
 
 ``` r
 archive_clean %>% 
@@ -90,17 +96,25 @@ archive_clean %>%
   ggplot() +
   geom_point(mapping = aes(x = publication_date, y = n), alpha = 0.25) +
   geom_line(mapping = aes(x = publication_date, y = n_ma), colour = "orange1") +
+  geom_vline(mapping = aes(xintercept = date("2020-03-17")), lty = "dashed", alpha = 0.50) +
   labs(x = NULL,
        y = "Number of coronavirus articles",
        caption = "Source: New York Times API",
-       title = "Number of reports on the coronavirus over time",
-       subtitle = "A 10-day moving average is represented with an orange line")
+       title = "Time series of coronavirus reporting frequency",
+       subtitle = "A 10-day moving average is represented by an orange line") +
+  theme(plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(size = 10),
+        text = element_text(family = "Arial"),
+        plot.caption = element_text(colour = "gray70"))
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-5-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-4-1.png)
 
-Trend analysis
---------------
+Emerging topic clusters
+-----------------------
+
+Growing and shrinking themes
+----------------------------
 
 There are two types of trends that we want to focus on:
 
