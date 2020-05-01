@@ -23,6 +23,7 @@ library(tidytext)
 library(lubridate) # for working with dates and times
 library(zoo) # for the rollmean() function
 library(extrafont)
+library(broom) # for tidying model outputs
 
 theme_set(theme_light())
 loadfonts()
@@ -99,8 +100,6 @@ archive_clean %>%
         plot.caption = element_text(colour = "gray70"))
 ```
 
-## Emerging topic clusters
-
 ## Growing and shrinking themes 
 
 There are two types of trends that we want to focus on:
@@ -112,7 +111,36 @@ One possible way of modelling growth (or equivalently, shrinkage) in reporting t
 
 In this context, it is used to model variables which exhibit an initial period of exponential growth followed by a period of plateau from a certain point in time. The latter period of 'tailing off' is driven by some kind of constraint on the variable of interest. In epidemiology, for example, one can examine the initial phase of viral spread and note that it is indeed exponential but only up until a certain point - eventually, everyone who is infected either dies or people recover and gain immunity leading to a 'tailing off' in the initial spread.
 
-Certain topics as reported in the media can be thought of in a similar way: as the coronavirus emerges some topics will become more newsworthy and increase exponentially up until a point: reporters cannot, of course, continue to discuss such topics at an exponential rate since there is a limited number of reporters at any one time and other topics emerge to fill their place.
+Certain topics as reported in the media can be thought of in a similar way: as the coronavirus emerges some topics will become more newsworthy and increase exponentially up until a point: reporters cannot, of course, continue to discuss such topics at an exponential rate since there is a limited number of reporters at any one time and other topics emerge to fill their place. Indeed, we have just observed this with the particular choice of 'coronavirus'.
+
+In order to conduct our analysis, we need to ...
+
+```{r}
+cum_time_counts <- archive_unnested %>%
+  count(cum_time_elapsed, name = "trials")
+
+logit_model_results <- archive_unnested %>%
+  count(article_term, cum_time_elapsed, name = "successes") %>%
+  add_count(article_term, name = "term_count") %>%
+  filter(term_count > 10) %>% # only include words which appear more than 10 times overall
+  arrange(cum_time_elapsed) %>%
+  left_join(cum_time_counts, by = "cum_time_elapsed") %>%
+  mutate(p_est = successes / trials,
+         cum_time_elapsed = as.integer(cum_time_elapsed)) %>%
+  group_by(article_term) %>%
+  nest() %>%
+  mutate(logit_model = map(data, function(xx) glm(cbind(successes, trials - successes) ~ cum_time_elapsed, family = "binomial", data = xx)),
+         logit_model_tidy = map(logit_model, broom::tidy)) %>%
+  select(article_term, logit_model_tidy) %>%
+  unnest(cols = c(logit_model_tidy)) %>%
+  ungroup() %>%
+  filter(term == "cum_time_elapsed")
+
+
+```
+
+
+## Emerging topic clusters
 
 ## Sentiment analysis
 
