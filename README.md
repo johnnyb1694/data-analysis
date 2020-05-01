@@ -1,4 +1,11 @@
 # Data Analysis in R
+
 A collection of various data analyses conducted in R.
 
-This respository contains analyses (split by different folders) of various datasets issued by the TidyTuesdays project and datasets external to this project that are of interest to me.
+There are several subdirectories contained within this repository. They are as follows:
+
+* *_Archive*: this folder contains analyses conducted in the past which are either unfinished or the results of which were inconclusive
+* *1. Technical write-ups*: this folder contains technical write-ups compiled to markdown. These are useful for those looking to inspect the technical foundations behind certain posts on [my blog](https://johnnys-blog.netlify.app/)
+* *2. Technical scripts*: unfortunately, I don't always have time to create technical writeups in markdown (see above). For this reason, the analyses behind certain posts are written into an R script (the contents of which are directly transferred into the .Rmd document I used to write up my blog posts)
+
+If you have any questions that you'd like to ask, please feel free to email me at: [johnnyb1694@gmail.com](johnnyb1694@gmail.com)
