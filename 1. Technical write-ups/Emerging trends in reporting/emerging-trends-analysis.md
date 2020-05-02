@@ -1,23 +1,19 @@
----
-title: "Emerging trends in the reporting of the coronavirus"
-output: github_document
----
+Emerging trends in the reporting of the coronavirus
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-## Context
+Context
+-------
 
 As of today, we are currently in the midst of one of the most disruptive pandemics in history. I am of course referring to COVID-19.
 
 (Continue later)
 
-## Load required packages
+Load required packages
+----------------------
 
 For this script, we will leverage the following libraries:
 
-```{r message=FALSE}
+``` r
 library(tidyverse)
 library(prettydoc)
 library(tidytext)
@@ -30,13 +26,14 @@ theme_set(theme_light())
 loadfonts()
 ```
 
-## Import article metadata
+Import article metadata
+-----------------------
 
 Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types.
 
-In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes. 
+In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes.
 
-```{r message=FALSE}
+``` r
 # Clearly, the following path will not work on your local system (amend accordingly)
 data_path <- "/Users/Johnny/Desktop/Data Science/R/Project NY Times/Extractor script/article-extractions/2020_1-to-4-extract.csv"
 archive_raw <- read_csv(file = data_path)
@@ -44,9 +41,20 @@ archive_raw <- read_csv(file = data_path)
 glimpse(archive_raw)
 ```
 
-As you can see, we have a total of 28,535 observations split across 7 different variables, spanning the period from 1 January 2020 to 30 April 2020. 
+    ## Rows: 28,535
+    ## Columns: 7
+    ## $ article_id          <dbl> 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 1…
+    ## $ article_headline    <chr> "‘A Different Era’: Anti-Semitic Crimes, and…
+    ## $ article_description <chr> "Attacks have been traditionally underreport…
+    ## $ source              <chr> "The New York Times", "The New York Times", …
+    ## $ publication_date    <date> 2020-01-03, 2020-01-01, 2020-01-02, 2020-01…
+    ## $ section             <chr> "U.S.", "Arts", "Movies", "Opinion", "Fashio…
+    ## $ word_count          <dbl> 1015, 1015, 2076, 1145, 1958, 1422, 1220, 13…
 
-## Data pre-processing
+As you can see, we have a total of 28,535 observations split across 7 different variables, spanning the period from 1 January 2020 to 30 April 2020.
+
+Data pre-processing
+-------------------
 
 The data has already undergone a certain level of pre-processing as the API returns data in a JSON format, which had to be engineered back into the `tibble` format.
 
@@ -56,7 +64,7 @@ We will make the slightly bold decision to unite the headline and description in
 
 We will retain a copy of the data without the unnesting procedure applied just incase we need it.
 
-```{r}
+``` r
 new_year <- date("2020-01-01")
 
 archive_clean <- archive_raw %>%
@@ -76,13 +84,14 @@ archive_unnested <- archive_clean %>%
   filter(!str_detect(article_term, "[0-9]"))
 ```
 
-## Exploratory analysis
+Exploratory analysis
+--------------------
 
-Let's first examine the elephant in the room: how did the reporting of the coronavirus emerge over time? Was it a gradual linear increase or did it exhibit a slightly more exponential period of growth? 
+Let's first examine the elephant in the room: how did the reporting of the coronavirus emerge over time? Was it a gradual linear increase or did it exhibit a slightly more exponential period of growth?
 
 It turns out that it follows a predictable logistic growth pattern, up until a certain point (specifically, the point of lockdown in the U.S. which occurred on the 17th of March 2020). From that point onwards, reporting has somewhat stabilised:
 
-```{r warning=FALSE}
+``` r
 archive_clean %>% 
   filter(covid_flag) %>% 
   count(publication_date) %>%
@@ -103,12 +112,15 @@ archive_clean %>%
         plot.caption = element_text(colour = "gray70"))
 ```
 
-## Growing and shrinking themes 
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-4-1.png)
+
+Growing and shrinking themes
+----------------------------
 
 There are two types of trends that we want to focus on:
 
-1. **Growth**: which particular topics are becoming increasingly 'important' as time goes on?
-2. **Shrinkage**: which topics have fallen off the radar? 
+1.  **Growth**: which particular topics are becoming increasingly 'important' as time goes on?
+2.  **Shrinkage**: which topics have fallen off the radar?
 
 One possible way of modelling growth (or equivalently, shrinkage) in reporting trends is through the use of a logistic growth (logistic regression) model. Logistic regression models are typically applied in the context of classification problems in machine learning. But, it might surprise some practitioners to know that this statistical model was originally employed in the biological domain.
 
@@ -120,16 +132,16 @@ Our plan is to regress an output variable, representing the relative frequency o
 
 In order to conduct our analysis, we need to first calculate the number of terms we have for each day since the new year - you can think of this as the number of trials we run each day:
 
-```{r}
+``` r
 cum_time_counts <- archive_unnested %>%
   count(cum_time_elapsed, name = "trials")
 ```
 
-Then, we need to prepare the number of successes by counting how many times each word appears in each day. 
+Then, we need to prepare the number of successes by counting how many times each word appears in each day.
 
 One important point to make here is that we don't want to include *all* words in our analysis - some words (such as 'Bolton' in regards to Trump's impeachment trial) appear a high number of times on one or two days then vanish thereafter. This type of term, from our point of view, is only going to create unnecessary noise in our algorithm fitting process so we want to exclude them. One way of doing this is to require that all words included in our analysis appear a certain number of times overall - I've gone with 50 as this seemed to provide the most fair results:
 
-```{r}
+``` r
 logit_model_inputs <- archive_unnested %>%
   count(article_term, cum_time_elapsed, name = "successes") %>%
   add_count(article_term, name = "term_count") %>%
@@ -143,13 +155,28 @@ logit_model_inputs <- archive_unnested %>%
 logit_model_inputs
 ```
 
-Now we are ready to fit a logistic regression to each individual term. Let $U_t^{(w)}$ denote the 'relative usage' of word \(w\) at time $t$ - by 'relative usage' we mean how frequently word $w$ is used relative to all other words at the same time $t$. Then $U_t^{(w)}$ is connected to the linear combination $-(\beta_0^{(w)} + \beta_1^{(w)} t)$ by way of a [logistic transformation](https://en.wikipedia.org/wiki/Logistic_regression#Logistic_model).
+    ## # A tibble: 33,481 x 6
+    ##    article_term cum_time_elapsed successes trials   p_est term_count
+    ##    <chr>                   <int>     <int>  <int>   <dbl>      <int>
+    ##  1 accused                     0         1    960 0.00104         61
+    ##  2 act                         0         1    960 0.00104         56
+    ##  3 agency                      0         1    960 0.00104         54
+    ##  4 ago                         0         1    960 0.00104         59
+    ##  5 ahead                       0         1    960 0.00104         72
+    ##  6 america                     0         3    960 0.00312         94
+    ##  7 american                    0         1    960 0.00104        109
+    ##  8 amid                        0         1    960 0.00104         87
+    ##  9 angeles                     0         1    960 0.00104         61
+    ## 10 anti                        0         2    960 0.00208         53
+    ## # … with 33,471 more rows
 
-The coefficient $\beta_1^{(w)}$ can be interpreted as the *rate* of growth (or shrinkage, if negative) associated with word $w$. Indeed, this formula is on a per-word basis; we will fit a logistic growth model to each respective term in the input data via `stats::glm()`.
+Now we are ready to fit a logistic regression to each individual term. Let *U*<sub>*t*</sub><sup>(*w*)</sup> denote the 'relative usage' of word *w* at time *t* - by 'relative usage' we mean how frequently word *w* is used relative to all other words at the same time *t*. Then *U*<sub>*t*</sub><sup>(*w*)</sup> is connected to the linear combination −(*β*<sub>0</sub><sup>(*w*)</sup> + *β*<sub>1</sub><sup>(*w*)</sup>*t*) by way of a [logistic transformation](https://en.wikipedia.org/wiki/Logistic_regression#Logistic_model).
+
+The coefficient *β*<sub>1</sub><sup>(*w*)</sup> can be interpreted as the *rate* of growth (or shrinkage, if negative) associated with word *w*. Indeed, this formula is on a per-word basis; we will fit a logistic growth model to each respective term in the input data via `stats::glm()`.
 
 We also make use of the `purrr::map()` function in order to apply the `glm()` function to each respective word:
 
-```{r}
+``` r
 logit_model_results <- logit_model_inputs %>%
   group_by(article_term) %>%
   nest() %>%
@@ -172,9 +199,9 @@ shrinking_terms <- logit_model_results %>%
 
 So now, if we inspect each respective set of terms we can identify which particular topics are growing exponentially in popularity and which topics have fallen off the radar.
 
-Let's start with trending terms. Note that 'estimate' in this context refers to the aforementioned $\beta_1^{(w)}$ that we discussed above. Thus, a higher estimate indicates a higher rate of growth (and vice versa):
+Let's start with trending terms. Note that 'estimate' in this context refers to the aforementioned *β*<sub>1</sub><sup>(*w*)</sup> that we discussed above. Thus, a higher estimate indicates a higher rate of growth (and vice versa):
 
-```{r}
+``` r
 logit_model_inputs %>%
   filter(article_term %in% trending_terms$article_term) %>%
   ggplot(aes(cum_time_elapsed, p_est, colour = article_term)) +
@@ -182,11 +209,13 @@ logit_model_inputs %>%
   facet_wrap(~article_term)
 ```
 
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-8-1.png)
+
 No surprises here, per se, as we would have expected the word 'coronavirus' to have emerged as a strong contender for the highest growing topic. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the struggle to effectively organise 'elections' in the midst of a 'pandemic', the efficacy of 'masks'.
 
 As for shrinking terms, this where things get a little more interesting:
 
-```{r}
+``` r
 logit_model_inputs %>%
   filter(article_term %in% shrinking_terms$article_term) %>%
   ggplot(aes(cum_time_elapsed, successes, colour = article_term)) +
@@ -194,10 +223,15 @@ logit_model_inputs %>%
   facet_wrap(~article_term)
 ```
 
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
 There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
 
-## Topic clusters
+Topic clusters
+--------------
 
-## Sentiment analysis
+Sentiment analysis
+------------------
 
-## Coverage split by different countries
+Coverage split by different countries
+-------------------------------------
