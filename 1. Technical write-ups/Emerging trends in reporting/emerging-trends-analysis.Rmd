@@ -32,9 +32,35 @@ loadfonts()
 
 ## Import article metadata
 
-Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types. Hello 
+Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types. 
 
-In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes. 
+In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I won't include my API key here (for obvious reasons) but you'll need to create a function like this to access the data:
+
+```{r}
+## Archive API ##
+nyt_archive_search <- function(api_key = "<INSERT YOUR KEY HERE>", year, month) {
+  
+  if (!stringr::str_detect(year, regex("^[0-9]{4}$")) | !stringr::str_detect(month, regex("^[0-9]{1}$"))) {
+    stop("Year and month inputs must be numeric e.g. '2020' and '1' (for January) respectively", call. = FALSE)
+  }
+  
+  jsonlite::fromJSON(paste0("http://api.nytimes.com/svc/archive/v1/", year, "/", month, ".json?api-key=", api_key),
+           flatten = TRUE) %>%
+    data.frame() %>%
+    dplyr::transmute(article_id = row_number(),
+                     article_headline = response.docs.headline.main,
+                     article_description = response.docs.abstract, 
+                     source = response.docs.source,
+                     publication_date = as.Date(str_sub(response.docs.pub_date, start = 1L, end = 10L)),
+                     section = response.docs.section_name,
+                     word_count = response.docs.word_count) %>%
+    tibble::as_tibble()
+}
+```
+
+I am in the process of compiling a small package to allow other users to critique and leverage the code like this so that you can do the same.
+
+I saved off my extraction to a CSV file for use in what follows:
 
 ```{r message=FALSE}
 # Clearly, the following path will not work on your local system (amend accordingly)
