@@ -1,6 +1,9 @@
 ---
 title: "Emerging trends in the reporting of the coronavirus"
-output: github_document
+output: 
+  prettydoc::html_pretty:
+    theme: leonids
+    highlight: github
 ---
 
 ```{r setup, include=FALSE}
@@ -19,6 +22,7 @@ For this script, we will leverage the following libraries:
 
 ```{r message=FALSE}
 library(tidyverse)
+library(prettydoc)
 library(tidytext)
 library(lubridate) # for working with dates and times
 library(zoo) # for the rollmean() function
@@ -92,7 +96,7 @@ archive_clean %>%
   geom_line(mapping = aes(x = publication_date, y = n_ma), colour = "orange1") +
   geom_vline(mapping = aes(xintercept = date("2020-03-17")), lty = "dashed", alpha = 0.50) +
   labs(x = NULL,
-       y = "Number of coronavirus articles",
+       y = "Articles related to COVID-19",
        caption = "Source: New York Times API",
        title = "Time series of coronavirus reporting frequency",
        subtitle = "A 10-day moving average is represented by an orange line") +
@@ -113,14 +117,22 @@ One possible way of modelling growth (or equivalently, shrinkage) in reporting t
 
 In this context, it is used to model variables which exhibit an initial period of exponential growth followed by a period of plateau from a certain point in time. The latter period of 'tailing off' is driven by some kind of constraint on the variable of interest. In epidemiology, for example, one can examine the initial phase of viral spread and note that it is indeed exponential but only up until a certain point - eventually, everyone who is infected either dies or people recover and gain immunity leading to a 'tailing off' in the initial spread.
 
-Certain topics as reported in the media can be thought of in a similar way: as the coronavirus emerges some topics will become more newsworthy and increase exponentially up until a point: reporters cannot, of course, continue to discuss such topics at an exponential rate since there is a limited number of reporters at any one time and other topics emerge to fill their place. Indeed, we have just observed this with the particular choice of 'coronavirus'.
+Certain topics as reported in the media can be thought of in a similar way: as the coronavirus emerges some topics will become more newsworthy and increase exponentially up until a certain point: reporters cannot, of course, continue to discuss such topics at an exponential rate since there is a limited number of reporters at any one time and other topics will inevitably emerge to fill their place. Indeed, we have just observed this feature in a particular choice of topic, namely: 'coronavirus'.
 
-In order to conduct our analysis, we need to ...
+Our plan is to regress an output variable, representing the relative frequency of a term in a given day, against time elapsed since the new year. With regards to the former, we can think of the number of times a given term appears in a given day as the number of 'successes' and the number of times that *any* term appears in a given day (i.e. the number of words we have for that day) as the number of 'trials'. This ratio is a basic indicator of term coverage.
+
+In order to conduct our analysis, we need to first calculate the number of terms we have for each day since the new year - you can think of this as the number of trials we run each day:
 
 ```{r}
 cum_time_counts <- archive_unnested %>%
   count(cum_time_elapsed, name = "trials")
+```
 
+Then, we need to prepare the number of successes by counting how many times each word appears in each day. 
+
+One important point to make here is that we don't want to include *all* words in our analysis - some words (such as 'Bolton' in regards to Trump's impeachment trial) appear a high number of times on one or two days then vanish thereafter. This type of term, from our point of view, is only going to create unnecessary noise in our algorithm fitting process so we want to exclude them. One way of doing this is to require that all words included in our analysis appear a certain number of times overall - I've gone with 50 as this seemed to provide the most fair results:
+
+```{r}
 logit_model_inputs <- archive_unnested %>%
   count(article_term, cum_time_elapsed, name = "successes") %>%
   add_count(article_term, name = "term_count") %>%
@@ -128,8 +140,23 @@ logit_model_inputs <- archive_unnested %>%
   arrange(cum_time_elapsed) %>%
   left_join(cum_time_counts, by = "cum_time_elapsed") %>%
   mutate(p_est = successes / trials,
-         cum_time_elapsed = as.integer(cum_time_elapsed))
+         cum_time_elapsed = as.integer(cum_time_elapsed)) %>%
+  select(article_term, cum_time_elapsed, successes, trials, p_est, term_count) # purely for presentational purposes
 
+logit_model_inputs
+```
+
+Now we are ready to fit a logistic regression to each individual term. Let \(U_t^{(w)}\) denote the 'relative usage' of word \(w\) at time $t$ - by 'relative usage' we mean how frequently word $w$ is used relative to all other words at the same time $t$. Then: 
+
+$$
+U_t^{(w)} = \dfrac{1}{1 + e^{-(\beta_0^{(w)} + \beta_1^{(w)} t )}} \in (0, 1)
+$$
+
+where $\beta_1^{(w)}$ can be interpreted as the *rate* of growth (or shrinkage, if negative) associated with word $w$. Indeed, this formula is on a per-word basis; we will fit a logistic growth model to each respective term in the input data via `stats::glm()`.
+
+We also make use of the `purrr::map()` function in order to apply the `glm()` function to each respective word:
+
+```{r}
 logit_model_results <- logit_model_inputs %>%
   group_by(article_term) %>%
   nest() %>%
@@ -141,19 +168,42 @@ logit_model_results <- logit_model_inputs %>%
 
 trending_terms <- logit_model_results %>%
   filter(term == "cum_time_elapsed") %>%
-  filter(estimate > 0) %>%
-  arrange(p.value) %>%
-  head(20) 
+  arrange(desc(estimate)) %>%
+  head(10) 
 
 shrinking_terms <- logit_model_results %>%
   filter(term == "cum_time_elapsed") %>%
-  filter(estimate <= 0) %>%
-  arrange(p.value) %>%
-  head(20) 
+  arrange(estimate) %>%
+  head(10) 
 ```
 
+So now, if we inspect each respective set of terms we can identify which particular topics are growing exponentially in popularity and which topics have fallen off the radar.
 
-## Emerging topic clusters
+Let's start with trending terms. Note that 'estimate' in this context refers to the aforementioned $\beta_1^{(w)}$ that we discussed above. Thus, a higher estimate indicates a higher rate of growth (and vice versa):
+
+```{r}
+logit_model_inputs %>%
+  filter(article_term %in% trending_terms$article_term) %>%
+  ggplot(aes(cum_time_elapsed, p_est, colour = article_term)) +
+  geom_line() +
+  facet_wrap(~article_term)
+```
+
+No surprises here, per se, as we would have expected the word 'coronavirus' to have emerged as a strong contender for the highest growing topic. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the struggle to effectively organise 'elections' in the midst of a 'pandemic', the efficacy of 'masks'.
+
+As for shrinking terms, this where things get a little more interesting:
+
+```{r}
+logit_model_inputs %>%
+  filter(article_term %in% shrinking_terms$article_term) %>%
+  ggplot(aes(cum_time_elapsed, successes, colour = article_term)) +
+  geom_line() +
+  facet_wrap(~article_term)
+```
+
+There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
+
+## Topic clusters
 
 ## Sentiment analysis
 
