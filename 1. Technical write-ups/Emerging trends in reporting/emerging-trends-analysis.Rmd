@@ -59,7 +59,9 @@ We will retain a copy of the data without the unnesting procedure applied just i
 new_year <- date("2020-01-01")
 
 archive_clean <- archive_raw %>%
-  mutate(article_id = row_number(), # unfortunately, in the process of calling the API I messed up my calculation of this column so I have overwritten it here
+  select(-article_id) %>%
+  distinct() %>% # there are duplicates in the data that we need to get rid of
+  mutate(article_id = row_number(),
          publication_day = day(publication_date),
          publication_month = month(publication_date),
          publication_year = year(publication_date),
@@ -119,24 +121,35 @@ In order to conduct our analysis, we need to ...
 cum_time_counts <- archive_unnested %>%
   count(cum_time_elapsed, name = "trials")
 
-logit_model_results <- archive_unnested %>%
+logit_model_inputs <- archive_unnested %>%
   count(article_term, cum_time_elapsed, name = "successes") %>%
   add_count(article_term, name = "term_count") %>%
-  filter(term_count > 10) %>% # only include words which appear more than 10 times overall
+  filter(term_count > 50) %>% # only include words which appear more than a certain number of times overall over the past 4 months - we want to identify the signal, not the noise
   arrange(cum_time_elapsed) %>%
   left_join(cum_time_counts, by = "cum_time_elapsed") %>%
   mutate(p_est = successes / trials,
-         cum_time_elapsed = as.integer(cum_time_elapsed)) %>%
+         cum_time_elapsed = as.integer(cum_time_elapsed))
+
+logit_model_results <- logit_model_inputs %>%
   group_by(article_term) %>%
   nest() %>%
   mutate(logit_model = map(data, function(xx) glm(cbind(successes, trials - successes) ~ cum_time_elapsed, family = "binomial", data = xx)),
          logit_model_tidy = map(logit_model, broom::tidy)) %>%
   select(article_term, logit_model_tidy) %>%
   unnest(cols = c(logit_model_tidy)) %>%
-  ungroup() %>%
-  filter(term == "cum_time_elapsed")
+  ungroup()
 
+trending_terms <- logit_model_results %>%
+  filter(term == "cum_time_elapsed") %>%
+  filter(estimate > 0) %>%
+  arrange(p.value) %>%
+  head(20) 
 
+shrinking_terms <- logit_model_results %>%
+  filter(term == "cum_time_elapsed") %>%
+  filter(estimate <= 0) %>%
+  arrange(p.value) %>%
+  head(20) 
 ```
 
 
