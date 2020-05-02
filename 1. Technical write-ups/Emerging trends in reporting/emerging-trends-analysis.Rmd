@@ -32,7 +32,7 @@ loadfonts()
 
 ## Import article metadata
 
-Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types.
+Note that this data was originally acquired via the [New York Times API](https://developer.nytimes.com/apis). Once you sign up, you will be issued with an API key which you can use to access metadata on thousands of different article types. Hello 
 
 In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I am in the process of compiling a small package to allow other users to critique and leverage the aforementioned personal script that I created to extract this data for their own purposes. 
 
