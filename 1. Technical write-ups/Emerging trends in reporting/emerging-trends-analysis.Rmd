@@ -19,11 +19,15 @@ For this script, we will leverage the following libraries:
 
 ```{r message=FALSE}
 library(tidyverse)
-library(prettydoc)
+library(scales) # for percentage format axis labels
 library(tidytext)
 library(lubridate) # for working with dates and times
 library(zoo) # for the rollmean() function
 library(extrafont)
+library(topicmodels)
+library(widyr) # for correlation analyses
+library(ggraph)
+library(igraph)
 library(broom) # for tidying model outputs
 
 theme_set(theme_light())
@@ -188,6 +192,7 @@ logit_model_results <- logit_model_inputs %>%
 trending_terms <- logit_model_results %>%
   filter(term == "cum_time_elapsed") %>%
   arrange(desc(estimate)) %>%
+  filter(!str_detect(article_term, regex("(april|virus)"))) %>% # see commentary below on this
   head(10) 
 
 shrinking_terms <- logit_model_results %>%
@@ -196,34 +201,120 @@ shrinking_terms <- logit_model_results %>%
   head(10) 
 ```
 
-So now, if we inspect each respective set of terms we can identify which particular topics are growing exponentially in popularity and which topics have fallen off the radar.
+So now, if we inspect each respective set of terms we can identify which particular topics are growing exponentially in popularity and which topics have fallen off the radar. Note that I have filtered out some obvious trending terms (those which don't require such an analysis to know about): virus-related terms and the month of April (of course that will appear to be trending).
 
 Let's start with trending terms. Note that 'estimate' in this context refers to the aforementioned $\beta_1^{(w)}$ that we discussed above. Thus, a higher estimate indicates a higher rate of growth (and vice versa):
 
 ```{r}
 logit_model_inputs %>%
   filter(article_term %in% trending_terms$article_term) %>%
-  ggplot(aes(cum_time_elapsed, p_est, colour = article_term)) +
+  ggplot(mapping = aes(cum_time_elapsed, p_est, colour = article_term)) +
   geom_line() +
-  facet_wrap(~article_term)
+  facet_wrap(~article_term) +
+  labs(x = "Time (days since new year)",
+       y = "Relative frequency",
+       colour = "Term",
+       title = "Trending terms (excluding obvious terms e.g. 'coronavirus')",
+       subtitle = "Healthcare, lockdown and the perils of organising elections are emerging concerns")
 ```
 
-No surprises here, per se, as we would have expected the word 'coronavirus' to have emerged as a strong contender for the highest growing topic. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the struggle to effectively organise 'elections' in the midst of a 'pandemic', the efficacy of 'masks'.
+No surprises here, per se. We removed it but the word 'coronavirus' is indeed the highest growing term if it is accounted for. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the struggle to effectively organise 'elections' in the midst of a 'pandemic', the efficacy of 'masks'.
 
 As for shrinking terms, this where things get a little more interesting:
 
 ```{r}
 logit_model_inputs %>%
   filter(article_term %in% shrinking_terms$article_term) %>%
-  ggplot(aes(cum_time_elapsed, successes, colour = article_term)) +
+  ggplot(aes(cum_time_elapsed, p_est, colour = article_term)) +
   geom_line() +
-  facet_wrap(~article_term)
+  facet_wrap(~article_term) +
+  labs(x = "Time (days since new year)",
+     y = "Relative frequency",
+     colour = "Term",
+     title = "Shrinking terms",
+     subtitle = "Iran, defense and impeachment all make appearances")
 ```
 
 There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
 
-## Topic clusters
+## What is Latent Dirichlet Allocation (LDA)?
+
+Analysing emerging trends in certain words forces us to contemplate an important question: which topics are emerging in the media as a result of the coronavirus?
+
+The way in which NLP practitioners achieve this is via the use of a Bayesian technique known as Latent Dirichlet Allocation (also known as 'LDA'). The basic assumption behind this technique is that 'documents' (or, in our case, newspaper articles) are composed of different mixtures of topics. For example, you might read an article about how nutrition impacts the performance of professional footballers. Such an article is not *just* 'sports' but neither is it just 'science' - in fact, it's a potentially complex mixture of topics.
+
+A further string to the bow of LDA is that each topic is assumed to consist of a given distribution of words. For example, if we take the topic 'sports' once again, one can imagine that this topic draws (i) very frequently from words such as 'football', 'touchdown' or 'goal'; (ii) moderately frequently from words such as 'brain' (in relation to injuries perhaps); and (iii) doesn't really touch words like 'sewing' or 'chicken' at all.
+
+With these two assumptions in mind, LDA imagines that 'documents' (newspaper articles) are 'generated' (written) by first deciding on  which specific topics a given document will be about. After this has been done, the second step is to randomly sample words from a random selection of these topics in order to build newspaper articles. Of course, writers don't follow these steps in practice but this process does arguably reflect a subconscious decision-making process occurring in the writer's head. If they are writing about the latest  results on election polls, for example, then clearly there *is* a certain limitation on the words they choose to write down and their frequency (words like 'election' will come up more frequently).
+
+## Applying LDA
+
+Now, of course we aren't generating newspaper articles: we already have those. What we're actually trying to do is reverse-engineer the aforementioned process. Think about it: if we know which ('Dirichlet') parameters led to the creation of the articles that we are able to observe then we will be able to identify the approximate topic distribution within each article as well as the approximate distribution of words within each topic. Therefore, the goal of LDA is just that: to discover which specific parameters led to the realisation of the articles that we are able to observe. At the beginning of this process, these parameters are unknown and thus termed 'latent'.
+
+To successfully apply LDA, we employ `topicmodels::LDA()`. First, we need to 'cast' our data into a document-term matrix format:
+
+```{r}
+archive_dtm <- archive_unnested %>%
+  count(article_id, article_term) %>%
+  cast_dtm(article_id, article_term, n)
+
+archive_dtm
+```
+
+Now we can apply LDA. Let's make the hypothesis that there are, say, `k = 2` different topics:
+
+```{r}
+archive_lda <- LDA(x = archive_dtm, k = 2, control = list(seed = 1234))
+
+archive_lda
+```
+
+```{r}
+archive_topics <- tidy(archive_lda, matrix = "beta")
+
+archive_topics_terms <- archive_topics %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+archive_topics_terms %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = F, aes(alpha = beta)) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip() +
+  labs(x = NULL,
+       y = "Beta",
+       title = "Application of Latent Dirichlet Allocation (LDA) with two topics",
+       subtitle = "Here's the latest news on: the coronavirus or Trump's election campaign")
+```
+
+Notice how the same words appear in each topic: this is an *advantage* of LDA over 'hard' clustering methods which naively separate words into different clusters. The algorithm recognises that words such as 'president' and 'coronavirus' can and do appear in the same articles despite being used in different contexts (e.g. suppose each article is actually about 'impeachment' and 'healthcare concerns', respectively).
 
 ## Sentiment analysis
 
-## Coverage split by different countries
+One question we might ask is whether the media (in this case the New York Times) has, knowlingly or not, caused a shift in sentiment over time.
+
+We can have a stab at answering this by examining how the proportion of 'negative' words in each passing day has changed over time:
+
+```{r warning=FALSE}
+archive_unnested %>%
+  inner_join(get_sentiments("bing"), by = c("article_term" = "word")) %>%
+  group_by(publication_date) %>%
+  summarise(total_negative = sum(sentiment == "negative"),
+            total = n(),
+            prop_neg = total_negative / total) %>%
+  mutate(prop_neg_ma = rollmean(x = prop_neg, k = 10, fill = list(NA, NULL, NA))) %>%
+  ggplot() +
+  geom_point(aes(x = publication_date, y = prop_neg), alpha = 0.25) +
+  geom_line(aes(x = publication_date, y = prop_neg_ma), colour = "tomato2") +
+  scale_y_continuous(labels = percent_format()) +
+  expand_limits(y = 0) +
+  labs(x = "Publication date",
+       y = "Proportion of 'negatives' relative to positives",
+       title = "How sentiment is changing over time",
+       subtitle = "Negative sentiment is fairly stationary however there is a marginal peak during March to April")
+```
+
+The graph above illustrates how important it is to use the `expand_limits()` functionality provided by `ggplot2`. If we didn't expand the limits then this graph would make it appear as if there were an increasing trend in negativity following the coronavirus outbreak. 
+
