@@ -9,9 +9,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Context
 
-As of today, we are currently in the midst of one of the most disruptive pandemics in history. I am of course referring to COVID-19.
+As of today, we are currently in the midst of one of the most disruptive pandemics in history. 
 
-(Continue later)
+A lot of attention has rightly been placed on the epidemiological effects of the virus and what we can do, as a society, to  
 
 ## Load required packages
 
@@ -68,8 +68,8 @@ I saved off my extraction to a CSV file for use in what follows:
 
 ```{r message=FALSE}
 # Clearly, the following path will not work on your local system (amend accordingly)
-data_path <- "/Users/Johnny/Desktop/Data Science/R/Project NY Times/Extractor script/article-extractions/2020_1-to-4-extract.csv"
-archive_raw <- read_csv(file = data_path)
+archive_2020 <- "/Users/Johnny/Desktop/Data Science/R/Project NY Times/Extractor script/article-extractions/2020_1-to-4-extract.csv"
+archive_raw <- read_csv(file = archive_2020)
 
 glimpse(archive_raw)
 ```
@@ -97,7 +97,7 @@ archive_clean <- archive_raw %>%
          publication_month = month(publication_date),
          publication_year = year(publication_date),
          cum_time_elapsed = publication_date - new_year) %>%
-  unite(article_headline, article_description, col = "article_content", sep = " ---- ") %>%
+  unite(article_headline, article_description, col = "article_content", sep = " ---- ", remove = F) %>%
   mutate(covid_flag = str_detect(article_content, regex("(coronavirus|covid)", ignore_case = T)))
 
 archive_unnested <- archive_clean %>%
@@ -108,30 +108,74 @@ archive_unnested <- archive_clean %>%
 
 ## Exploratory analysis
 
-Let's first examine the elephant in the room: how did the reporting of the coronavirus emerge over time? Was it a gradual linear increase or did it exhibit a slightly more exponential period of growth? 
-
-It turns out that it follows a predictable logistic growth pattern, up until a certain point (specifically, the point of lockdown in the U.S. which occurred on the 17th of March 2020). From that point onwards, reporting has somewhat stabilised:
+Let's first examine how words grow in usage over time. More specifically, let us direct our attention to the 'coronavirus' and track its trajectory from the new year:
 
 ```{r warning=FALSE}
+coronavirus_theme <- theme(plot.title = element_text(face = "bold"),
+                           axis.title = element_text(size = 10),
+                           panel.grid.minor = element_blank(),
+                           panel.grid.major.x = element_blank(),
+                           panel.grid.major.y = element_line(colour = "grey50"),
+                           axis.ticks = element_blank(),
+                           plot.subtitle = element_text(size = 10),
+                           plot.caption = element_text(colour = "grey70"),
+                           plot.background = element_rect(fill = "grey30"),
+                           panel.background = element_rect(fill = "grey30"),
+                           panel.border = element_blank(),
+                           text = element_text(colour = "grey90"),
+                           axis.text = element_text(colour = "grey90"))
+
+arrows <- tibble(x_start = date("2020-01-15"),
+                 y_start = 30,
+                 x_end = date("2020-01-09"),
+                 y_end = 5)
+
 archive_clean %>% 
   filter(covid_flag) %>% 
   count(publication_date) %>%
   arrange(publication_date) %>%
-  mutate(n_ma = rollmean(x = n, k = 10, fill = list(NA, NULL, NA))) %>%
+  mutate(n_ma = rollmean(x = n, k = 15, fill = list(NA, NULL, NA))) %>%
   ggplot() +
-  geom_point(mapping = aes(x = publication_date, y = n), alpha = 0.25) +
-  geom_line(mapping = aes(x = publication_date, y = n_ma), colour = "orange1") +
-  geom_vline(mapping = aes(xintercept = date("2020-03-17")), lty = "dashed", alpha = 0.50) +
+  geom_point(mapping = aes(x = publication_date, y = n), alpha = 0.25, show.legend = F, colour = "grey90") +
+  geom_line(mapping = aes(x = publication_date, y = n_ma), colour = "#00E6FF") +
+  geom_vline(mapping = aes(xintercept = date("2020-03-17")), lty = "dotted", colour = "grey90") +
+  geom_curve(data = arrows, mapping = aes(x = x_start, y = y_start, xend = x_end, yend = y_end),
+             arrow = arrow(length = unit(0.08, "inch")), size = 0.5,
+             colour = "grey90", curvature = 0.4, alpha = 0.25) +
+  annotate("text", x = date("2020-01-15"), y = 50, size = 2.8, colour = "grey90", label = "Headline on 9 January 2020:", fontface = 2, hjust = 0) +
+  annotate("text", x = date("2020-01-15"), y = 40, size = 2.8, colour = "grey90", label = "'The new coronavirus doesn't appear to be \n readily spread by humans, but researchers\n caution that more study is needed'", hjust = 0, fontface = 1) +
   labs(x = NULL,
        y = "Articles related to COVID-19",
        caption = "Source: New York Times API",
-       title = "Time series of coronavirus reporting frequency",
-       subtitle = "A 10-day moving average is represented by an orange line") +
-  theme(plot.title = element_text(face = "bold"),
-        plot.subtitle = element_text(size = 10),
-        text = element_text(family = "Arial"),
-        plot.caption = element_text(colour = "gray70"))
+       title = "Coronavirus reporting timeline",
+       subtitle = "How the number of articles on the coronavirus has changed over time") +
+  coronavirus_theme
 ```
+
+Each of these dots corresponds to the incremental number of articles released each day from the new year up until the present day (almost, at least). 
+
+Things get a little more interesting if we present numbers on a *cumulative* basis:
+
+```{r warning=FALSE}
+archive_clean %>% 
+  filter(covid_flag) %>%
+  count(publication_date, name = "article_count") %>%
+  arrange(publication_date) %>%
+  mutate(cum_count = cumsum(article_count),
+         prop = cum_count / max(cum_count)) %>%
+  ggplot(aes(publication_date, prop)) +
+  geom_line(size = 1, colour = "grey90") +
+  geom_smooth(alpha = 0.08, colour = "#89A2FF", method = 'glm', method.args = list(family = "binomial"), lty = 2) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = NULL,
+       y = "Cumulative proportion (%) of COVID-19 articles",
+       title = "Growth in cumulative number of coronavirus articles",
+       subtitle = "The 'viral' nature of words can be captured by a 'logistic growth' model (dashed line)",
+       caption = "Source: New York Times API") +
+  coronavirus_theme
+``` 
+
+This pattern is ubiquitous in nature and it has a name: 'logistic growth'. Back in 1838 Pierre-Francois Verhulst applied a logistic growth model to population dynamics on the basis that the the rate of reproduction within a given society is proportional to both the existing population and the amount of available resources. That first point means that populations grow exponentially at first. However, a bottleneck is incurred at a certain point in time whereby members of the population compete with each other for critical resources, such as food or living space. Ultimately, this causes a plateauing effect to occur, which can be observed at approximately April 1 in the graph presented above.
 
 ## Growing and shrinking themes 
 
@@ -192,7 +236,7 @@ logit_model_results <- logit_model_inputs %>%
 trending_terms <- logit_model_results %>%
   filter(term == "cum_time_elapsed") %>%
   arrange(desc(estimate)) %>%
-  filter(!str_detect(article_term, regex("(april|virus)"))) %>% # see commentary below on this
+  filter(!str_detect(article_term, regex("(april|virus|primary)"))) %>% # see commentary below on this
   head(10) 
 
 shrinking_terms <- logit_model_results %>%
@@ -206,19 +250,39 @@ So now, if we inspect each respective set of terms we can identify which particu
 Let's start with trending terms. Note that 'estimate' in this context refers to the aforementioned $\beta_1^{(w)}$ that we discussed above. Thus, a higher estimate indicates a higher rate of growth (and vice versa):
 
 ```{r}
+growth_theme <- theme(plot.background = element_rect(fill = "grey35"),
+                      text = element_text(colour = "grey95"),
+                      line = element_line(colour = "grey30"),
+                      axis.line = element_blank(),
+                      axis.ticks = element_blank(),
+                      axis.text = element_text(colour = "grey95"),
+                      axis.title = element_text(size = 10),
+                      plot.title = element_text(face = "bold"),
+                      plot.subtitle = element_text(size = 10),
+                      panel.grid = element_blank(),
+                      panel.grid.major.y = element_line(colour = "grey50"),
+                      panel.border = element_blank(),
+                      panel.background = element_blank(),
+                      strip.background = element_rect(fill = "black"),
+                      plot.caption = element_text(colour = "gray70"))
+
 logit_model_inputs %>%
   filter(article_term %in% trending_terms$article_term) %>%
   ggplot(mapping = aes(cum_time_elapsed, p_est, colour = article_term)) +
-  geom_line() +
+  geom_line(alpha = 0.80, show.legend = F) +
   facet_wrap(~article_term) +
+  scale_y_continuous(labels = percent_format()) +
   labs(x = "Time (days since new year)",
        y = "Relative frequency",
        colour = "Term",
        title = "Trending terms (excluding obvious terms e.g. 'coronavirus')",
-       subtitle = "Healthcare, lockdown and the perils of organising elections are emerging concerns")
+       subtitle = "Healthcare, lockdown and kids are becoming emerging concerns",
+       caption = "Source: New York Times API") +
+  scale_colour_brewer(type = 'div', palette = 'Set3') +
+  growth_theme
 ```
 
-No surprises here, per se. We removed it but the word 'coronavirus' is indeed the highest growing term if it is accounted for. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the struggle to effectively organise 'elections' in the midst of a 'pandemic', the efficacy of 'masks'.
+No surprises here, per se. We removed it but the word 'coronavirus' is indeed the highest growing term if it is accounted for. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the efficacy of 'masks'.
 
 As for shrinking terms, this where things get a little more interesting:
 
@@ -226,13 +290,17 @@ As for shrinking terms, this where things get a little more interesting:
 logit_model_inputs %>%
   filter(article_term %in% shrinking_terms$article_term) %>%
   ggplot(aes(cum_time_elapsed, p_est, colour = article_term)) +
-  geom_line() +
+  geom_line(alpha = 0.80, show.legend = F) +
   facet_wrap(~article_term) +
+  scale_y_continuous(labels = percent_format()) +
   labs(x = "Time (days since new year)",
      y = "Relative frequency",
      colour = "Term",
      title = "Shrinking terms",
-     subtitle = "Iran, defense and impeachment all make appearances")
+     subtitle = "Iran (the 'killing' of Soleimani), defense and Trump's impeachment trial have all fallen off the radar",
+     caption = "Source: New York Times API") +
+  growth_theme +
+  scale_colour_brewer(type = 'div', palette = 'Set3')
 ```
 
 There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
@@ -283,10 +351,13 @@ archive_topics_terms %>%
   geom_col(show.legend = F, aes(alpha = beta)) +
   facet_wrap(~ topic, scales = "free") +
   coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("#00FFFF", "#AE6CD3")) +
   labs(x = NULL,
        y = "Beta",
        title = "Application of Latent Dirichlet Allocation (LDA) with two topics",
-       subtitle = "Here's the latest news on: the coronavirus or Trump's election campaign")
+       subtitle = "Here's the latest news on: the coronavirus or Trump's election campaign") +
+  growth_theme
 ```
 
 Notice how the same words appear in each topic: this is an *advantage* of LDA over 'hard' clustering methods which naively separate words into different clusters. The algorithm recognises that words such as 'president' and 'coronavirus' can and do appear in the same articles despite being used in different contexts (e.g. suppose each article is actually about 'impeachment' and 'healthcare concerns', respectively).
@@ -298,23 +369,42 @@ One question we might ask is whether the media (in this case the New York Times)
 We can have a stab at answering this by examining how the proportion of 'negative' words in each passing day has changed over time:
 
 ```{r warning=FALSE}
-archive_unnested %>%
+prop_neg <- archive_unnested %>%
   inner_join(get_sentiments("bing"), by = c("article_term" = "word")) %>%
   group_by(publication_date) %>%
   summarise(total_negative = sum(sentiment == "negative"),
             total = n(),
-            prop_neg = total_negative / total) %>%
+            prop_neg = total_negative / total) 
+
+prop_neg %>%
   mutate(prop_neg_ma = rollmean(x = prop_neg, k = 10, fill = list(NA, NULL, NA))) %>%
   ggplot() +
-  geom_point(aes(x = publication_date, y = prop_neg), alpha = 0.25) +
-  geom_line(aes(x = publication_date, y = prop_neg_ma), colour = "tomato2") +
+  geom_point(aes(x = publication_date, y = prop_neg), alpha = 0.25, colour = "grey90") +
+  geom_line(aes(x = publication_date, y = prop_neg_ma), colour = "orange1") +
   scale_y_continuous(labels = percent_format()) +
-  expand_limits(y = 0) +
   labs(x = "Publication date",
        y = "Proportion of 'negatives' relative to positives",
        title = "How sentiment is changing over time",
-       subtitle = "Negative sentiment is fairly stationary however there is a marginal peak during March to April")
+       subtitle = "Negative sentiment is fairly stationary however there is a marginal peak during March to April") +
+  coronavirus_theme
 ```
 
-The graph above illustrates how important it is to use the `expand_limits()` functionality provided by `ggplot2`. If we didn't expand the limits then this graph would make it appear as if there were an increasing trend in negativity following the coronavirus outbreak. 
+It looks as if there is some kind of increasing trend in negativity from the period February to May but it's not clear whether the difference is significant or not. How can we make this more rigorous? The answer is to apply a one sided t-test, where our hypothesis is that sentiment became more negative after a certain date, say the end of January for argument's sake.
+
+```{r}
+before_props <- prop_neg %>%
+  mutate(test_boundary = ifelse(publication_date < "2020-01-30", "Before", "After")) %>%
+  filter(test_boundary == "Before") %>%
+  pull(prop_neg)
+
+after_props <- prop_neg %>% 
+  mutate(test_boundary = ifelse(publication_date < "2020-01-30", "Before", "After")) %>%
+  filter(test_boundary == "After") %>%
+  pull(prop_neg)
+
+t.test(after_props, before_props, alternative = "two.sided") %>%
+  tidy()
+```
+
+
 
