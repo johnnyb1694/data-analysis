@@ -6,7 +6,11 @@ Context
 
 As of today, we are currently in the midst of one of the most disruptive pandemics in history.
 
-A lot of attention has rightly been placed on the epidemiological effects of the virus and what we can do, as a society, to
+A lot of attention has rightly been placed on the epidemiological effects of the virus. However, citizens rely on the media to deliver this crucial information. To be clear, the media has always played a pivotal role in shaping how society thinks - this is especially true in recent decades where *social* media has exploded in popularity.
+
+In these chaotic times it is tempting to think that newspapers and digital media platforms wield even more power than they normally do. But, just like us, they are subject to the emotional ups and downs of their surrounding environment.
+
+This document explores trends applicable to the coronavirus, as reported by the New York Times, using article metadata kindly provided by the [New York Times API](https://developer.nytimes.com/apis). My sincerest of gratitudes goes to them for making this data available to developers and the research community.
 
 Load required packages
 ----------------------
