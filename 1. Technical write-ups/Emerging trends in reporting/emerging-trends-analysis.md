@@ -19,19 +19,14 @@ For this script, we will leverage the following libraries:
 
 ``` r
 library(tidyverse)
-library(scales) # for percentage format axis labels
+library(scales) # for percentage format on axis labels
 library(tidytext)
 library(lubridate) # for working with dates and times
 library(zoo) # for the rollmean() function
-library(extrafont)
-library(topicmodels)
-library(widyr) # for correlation analyses
-library(ggraph)
-library(igraph)
+library(topicmodels) # for LDA implementation
 library(broom) # for tidying model outputs
 
 theme_set(theme_light())
-loadfonts()
 ```
 
 Import article metadata
@@ -42,7 +37,7 @@ Note that this data was originally acquired via the [New York Times API](https:/
 In this case I have used the 'Archive API' which allows me to acquire all NYT article metadata (e.g. headline, article description and more) for a given month - I have created a simple script to extract this data via the R package `jsonlite` for multiple months (January to April as of today). I won't include my API key here (for obvious reasons) but you'll need to create a function like this to access the data:
 
 ``` r
-## Archive API ##
+## Archive Search API call from R ##
 nyt_archive_search <- function(api_key = "<INSERT YOUR KEY HERE>", year, month) {
   
   if (!stringr::str_detect(year, regex("^[0-9]{4}$")) | !stringr::str_detect(month, regex("^[0-9]{1}$"))) {
@@ -138,10 +133,10 @@ coronavirus_theme <- theme(plot.title = element_text(face = "bold"),
                            text = element_text(colour = "grey90"),
                            axis.text = element_text(colour = "grey90"))
 
-arrows <- tibble(x_start = date("2020-01-15"),
-                 y_start = 30,
-                 x_end = date("2020-01-09"),
-                 y_end = 5)
+arrows <- tibble(x_start = c(date("2020-01-15"), date("2020-04-01")),
+                 y_start = c(30, 90),
+                 x_end = c(date("2020-01-09"), date("2020-03-18")),
+                 y_end = c(5, 90))
 
 archive_clean %>% 
   filter(covid_flag) %>% 
@@ -157,6 +152,7 @@ archive_clean %>%
              colour = "grey90", curvature = 0.4, alpha = 0.25) +
   annotate("text", x = date("2020-01-15"), y = 50, size = 2.8, colour = "grey90", label = "Headline on 9 January 2020:", fontface = 2, hjust = 0) +
   annotate("text", x = date("2020-01-15"), y = 40, size = 2.8, colour = "grey90", label = "'The new coronavirus doesn't appear to be \n readily spread by humans, but researchers\n caution that more study is needed'", hjust = 0, fontface = 1) +
+  annotate("text", x = date("2020-04-04"), y = 90, size = 2.8, colour = "grey90", label = "Multiple US states go into\nlockdown following weeks of\ndelayed action by Trump", hjust = 0, fontface = 1) +
   labs(x = NULL,
        y = "Articles related to COVID-19",
        caption = "Source: New York Times API",
@@ -432,37 +428,66 @@ prop_neg %>%
   mutate(prop_neg_ma = rollmean(x = prop_neg, k = 10, fill = list(NA, NULL, NA))) %>%
   ggplot() +
   geom_point(aes(x = publication_date, y = prop_neg), alpha = 0.25, colour = "grey90") +
-  geom_line(aes(x = publication_date, y = prop_neg_ma), colour = "orange1") +
+  geom_line(aes(x = publication_date, y = prop_neg_ma), colour = "#FCB448", alpha = 0.80) +
   scale_y_continuous(labels = percent_format()) +
-  labs(x = "Publication date",
-       y = "Proportion of 'negatives' relative to positives",
-       title = "How sentiment is changing over time",
-       subtitle = "Negative sentiment is fairly stationary however there is a marginal peak during March to April") +
+  labs(x = NULL,
+       y = "Proportion of 'negative' terms relative to positive terms",
+       title = "How negative sentiment is changing over time",
+       subtitle = "Negative sentiment is fairly stationary however there is a peak during March to April",
+       caption = "Source: New York Times API") +
   coronavirus_theme
 ```
 
 ![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
-It looks as if there is some kind of increasing trend in negativity from the period February to May but it's not clear whether the difference is significant or not. How can we make this more rigorous? The answer is to apply a one sided t-test, where our hypothesis is that sentiment became more negative after a certain date, say the end of January for argument's sake.
+It looks as if there is some kind of increasing trend in negativity from the period February to May but it's not clear whether the increase is significant or not. How can we make this more rigorous? Statisticians typically apply 'hypothesis testing' to this type of scenario. The hypothesis test can establish whether the increase in negative sentiment is beyond the realms of normality or not.
+
+We can split the data at the midpoint (the start of March) and perform a hypothesis test that the average proportion of negative words following this midpoint is greater than the average proportion of negative words preceding it:
 
 ``` r
+reference_date <- date("2020-03-01")
+
 before_props <- prop_neg %>%
-  mutate(test_boundary = ifelse(publication_date < "2020-01-30", "Before", "After")) %>%
+  mutate(test_boundary = ifelse(publication_date < reference_date, "Before", "After")) %>%
   filter(test_boundary == "Before") %>%
   pull(prop_neg)
 
 after_props <- prop_neg %>% 
-  mutate(test_boundary = ifelse(publication_date < "2020-01-30", "Before", "After")) %>%
+  mutate(test_boundary = ifelse(publication_date < reference_date, "Before", "After")) %>%
   filter(test_boundary == "After") %>%
   pull(prop_neg)
 
-t.test(after_props, before_props, alternative = "two.sided") %>%
+t_test_results <- t.test(after_props, before_props, alternative = "greater") %>%
   tidy()
+
+prop_neg %>%
+  mutate(prop_neg_ma = rollmean(x = prop_neg, k = 10, fill = list(NA, NULL, NA)),
+         reference = ifelse(publication_date < reference_date, TRUE, FALSE)) %>%
+  ggplot() +
+  geom_point(aes(x = publication_date, y = prop_neg), alpha = 0.25, colour = "grey90") +
+  geom_line(aes(x = publication_date, y = prop_neg_ma, colour = reference), alpha = 0.80, show.legend = F) +
+  geom_vline(xintercept = reference_date, lty = "dotted", colour = "#D593E8", alpha = 0.50) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_colour_manual(values = c("#D593E8", "#FCB448")) +
+  labs(x = NULL,
+       y = "Proportion of 'negative' terms relative to positive terms",
+       title = "How negative sentiment is changing over time",
+       subtitle = "Negative sentiment is fairly stationary however there is a peak during March to April",
+       caption = "Source: New York Times API") +
+  annotate("text", x = date("2020-03-03"), y = 0.45, size = 2.8, label = glue::glue("Statistically significant difference (mean = ", round(pull(t_test_results, estimate), 5), ", p < 0.05)\nin relative frequency of negative sentiment after\nmidpoint, 1 March 2020"), colour = "grey90", hjust = 0, alpha = 0.80, fontface = 3) +
+  coronavirus_theme
 ```
 
-    ## # A tibble: 1 x 10
-    ##   estimate estimate1 estimate2 statistic p.value parameter conf.low
-    ##      <dbl>     <dbl>     <dbl>     <dbl>   <dbl>     <dbl>    <dbl>
-    ## 1   0.0240     0.629     0.606      2.46  0.0168      59.1  0.00448
-    ## # … with 3 more variables: conf.high <dbl>, method <chr>,
-    ## #   alternative <chr>
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
+
+So, whilst the difference itself is small (around 0.04), it is nonetheless statistically significant.
+
+Conclusions
+-----------
+
+Our exploration of the New York Times metadata, though brief, has unlocked a few key insights into the impact of the coronavirus on reporting. Namely,
+
+-   Words really are 'viral'. They grow exponentially and then proceed to tail off once the topic has become exhausted and subtopics take its place
+-   Words can also be 'retroviral'. Certain topics fall off the radar as a result of dominant topics like the coronavirus. The question of Iran is one such topic
+-   The vast majority of articles written can be grouped into a 'political' and 'health-related' category - the two are *not* mutually exclusive either as demonstrated by the outcome of the LDA algorithm
+-   Negative sentiment, though fairly stationary, has incurred somewhat of a hit during the coronavirus as one would have expected. This hit *is* statistically significant
