@@ -152,7 +152,7 @@ archive_clean %>%
              colour = "grey90", curvature = 0.4, alpha = 0.25) +
   annotate("text", x = date("2020-01-15"), y = 50, size = 2.8, colour = "grey90", label = "Headline on 9 January 2020:", fontface = 2, hjust = 0) +
   annotate("text", x = date("2020-01-15"), y = 40, size = 2.8, colour = "grey90", label = "'The new coronavirus doesn't appear to be \n readily spread by humans, but researchers\n caution that more study is needed'", hjust = 0, fontface = 1) +
-  annotate("text", x = date("2020-04-04"), y = 90, size = 2.8, colour = "grey90", label = "Multiple US states go into\nlockdown following weeks of\ndelayed action by Trump", hjust = 0, fontface = 1) +
+  annotate("text", x = date("2020-04-04"), y = 90, size = 2.8, colour = "grey90", label = "Multiple US states go into\nlockdown following weeks of\ngovernment inaction", hjust = 0, fontface = 1) +
   labs(x = NULL,
        y = "Articles related to COVID-19",
        caption = "Source: New York Times API",
@@ -317,35 +317,116 @@ logit_model_inputs %>%
 
 No surprises here, per se. We removed it but the word 'coronavirus' is indeed the highest growing term if it is accounted for. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the efficacy of 'masks'.
 
-What is interesting though is to note *when* these terms start to gain traction: it happens at a different point in time to when the coronavirus was the most important topic:
+What is interesting though is to note *when* these terms start to gain traction. It happens at a different point in time to when the coronavirus was the most important topic because of 'competition' (though it is less so competition and moreso a shift in what is important) between topics for coverage:
 
 ``` r
-logit_model_inputs %>%
-  filter(article_term %in% c("masks", "workers", "pandemic", "coronavirus")) %>%
-  group_by(article_term) %>%
-  mutate(cum_successes = cumsum(successes),
-         total_successes = sum(successes),
-         cum_successes_inc = cum_successes / lag(cum_successes)) %>%
-  ungroup() %>%
-  select(article_term, cum_time_elapsed, cum_successes, total_successes) %>%
-  mutate(prop_success = cum_successes / total_successes,
-         covid_flag = ifelse(article_term == "coronavirus", TRUE, FALSE)) %>%
-  ggplot(mapping = aes(cum_time_elapsed, prop_success, colour = article_term, lty = !covid_flag)) +
-  geom_smooth(method = 'glm', method.args = list(family = "binomial"), alpha = 0.08, se = F, show.legend = FALSE) +
-  scale_y_continuous(labels = percent_format()) +
-  scale_colour_brewer(type = 'div', palette = 'Set3') +
-  coronavirus_theme +
-  labs(x = "Cumulative time elapsed (since new year)",
-       y = "Coverage (propn. of total as at 1 May 2020)",
-       title = "Viral growth has a limit",
-       subtitle = "And that limit is caused by 'competing' topics: the 'coronavirus' shifts into new subtopics over time")
-```
+focus_terms <- c("masks", "kids", "workers", "coronavirus")
 
-    ## `geom_smooth()` using formula 'y ~ x'
+term_coef <- logit_model_results %>%
+  filter(article_term %in% focus_terms) %>%
+  select(article_term, term, estimate) %>%
+  spread(key = term, value = estimate) %>%
+  rename(b_0 = `(Intercept)`, b_1 = cum_time_elapsed) %>%
+  mutate(max_growth_point = abs(b_0 / b_1))
+
+term_coef_error <- logit_model_results %>% 
+  filter(article_term %in% focus_terms) %>% 
+  select(article_term, term, std.error) %>% 
+  spread(key = term, value = std.error) %>% 
+  select(article_term, b_1_error = cum_time_elapsed)
+
+term_coef_complete <- inner_join(term_coef, term_coef_error, by = "article_term") %>%
+  transmute(article_term, 
+            b_0, 
+            b_1_lower = b_1 - b_1_error, 
+            b_1, 
+            b_1_upper = b_1 + b_1_error, 
+            max_growth_point,
+            max_growth_point_upper = abs(b_0 / b_1_lower),
+            max_growth_point_lower = abs(b_0 / b_1_upper))
+
+competing_theme <- theme(plot.title = element_text(face = "bold"),
+                         axis.title = element_text(size = 10),
+                         panel.grid.minor = element_blank(),
+                         panel.grid.major.x = element_blank(),
+                         panel.grid.major.y = element_line(colour = "grey50"),
+                         axis.ticks = element_blank(),
+                         plot.subtitle = element_text(size = 10),
+                         plot.caption = element_text(colour = "grey70"),
+                         plot.background = element_rect(fill = "grey30"),
+                         panel.background = element_rect(fill = "grey30"),
+                         panel.border = element_blank(),
+                         text = element_text(colour = "grey90"),
+                         axis.text = element_text(colour = "grey90"),
+                         legend.background = element_rect(fill = "grey30"),
+                         legend.key = element_rect(fill = "grey30"))
+
+competing_logit_growth <- crossing(x = seq(0.01, 1000, 0.01), article_term = focus_terms) %>%
+  left_join(term_coef_complete, by = "article_term") %>%
+  mutate(logit_output_central = 1 / (1 + exp(-b_0 -b_1*x))) 
+
+competing_arrow <- tibble(x_start = 850,
+                          y_start = 0.40,
+                          x_end = 700,
+                          y_end = 0.50)
+
+ggplot(data = competing_logit_growth, aes(x, logit_output_central, colour = article_term)) +
+  geom_line(alpha = 0.70) +
+  geom_point(data = term_coef, mapping = aes(x = max_growth_point, y = 0.50)) +
+  geom_segment(data = term_coef, mapping = aes(x = max_growth_point, xend = max_growth_point,
+                                               y = 0, yend = 0.50),
+               lty = "dashed") +
+  geom_hline(yintercept = 1, lty = 'dashed', colour = "grey90", alpha = 0.70) +
+  labs(y = "Term usage",
+       x = "Time",
+       title = "Trajectory of viral growth split by topic",
+       subtitle = "As the 'coronavirus' plateaus, other topics emerge (e.g. 'masks')",
+       caption = "Source: New York Times API",
+       colour = "Topic") +
+  theme(axis.text.x = element_blank()) +
+  scale_colour_manual(values = c("#00E6FF", "#8F9FFF", "#CF77F0", "#F546B4")) +
+  scale_y_continuous(labels = percent_format()) +
+  annotate("text", x = 750, y = 0.35, size = 2.8, colour = "grey90", label = "These dots reflect\nthe point of\nmaximum growth", hjust = 0, alpha = 0.90) +
+  geom_curve(data = competing_arrow, mapping = aes(x = x_start, y = y_start, xend = x_end, yend = y_end),
+             arrow = arrow(length = unit(0.05, "inch")), size = 0.5,
+             colour = "grey90", curvature = 0.4, alpha = 0.90) +
+  competing_theme
+```
 
 ![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-11-1.png)
 
-As for shrinking terms, this is where things get a little more interesting:
+We can observe this phenomena more precisely by looking at how much longer it takes other topics to emerge, relative to the 'coronavirus' (it takes 'masks' around two times as long):
+
+``` r
+coronavirus_growth_point <- term_coef_complete %>%
+  filter(article_term == "coronavirus") %>%
+  pull(max_growth_point)
+
+term_coef_complete %>%
+  transmute(article_term,
+            central_rel = max_growth_point / coronavirus_growth_point,
+            lower_rel = ifelse(article_term != "coronavirus", max_growth_point_lower / coronavirus_growth_point, NA),
+            higher_rel = ifelse(article_term != "coronavirus", max_growth_point_upper / coronavirus_growth_point, NA)) %>%
+  mutate(article_term = fct_reorder(article_term, 1 / central_rel)) %>%
+  ggplot(aes(colour = article_term)) +
+  geom_point(aes(x = central_rel, y = article_term), show.legend = F) +
+  geom_errorbarh(aes(x = central_rel, xmin = lower_rel, xmax = higher_rel, y = article_term), height = 0.1, show.legend = F) +
+  geom_vline(xintercept = 1, lty = 'dashed', colour = "grey90", alpha = 0.50) +
+  scale_colour_manual(values = rev(c("#00E6FF", "#8F9FFF", "#CF77F0", "#F546B4"))) +
+  labs(x = "Time to maximum growth (relative to 'coronavirus')",
+       y = NULL,
+       title = "Ratio of time to maximum growth relative to 'coronavirus'",
+       subtitle = "For example, on average, 'masks' begin to gain maximum growth ~ 2 times after the 'coronavirus'") +
+  competing_theme
+```
+
+    ## Warning: Ignoring unknown aesthetics: x
+
+    ## Warning: Removed 1 rows containing missing values (geom_errorbarh).
+
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+As for shrinking terms, we note the following:
 
 ``` r
 logit_model_inputs %>%
@@ -364,7 +445,7 @@ logit_model_inputs %>%
   scale_colour_brewer(type = 'div', palette = 'Set3')
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-12-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
 There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
 
@@ -433,7 +514,7 @@ archive_topics_terms %>%
   growth_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 Notice how the same words appear in each topic: this is an *advantage* of LDA over 'hard' clustering methods which naively separate words into different clusters. The algorithm recognises that words such as 'president' and 'coronavirus' can and do appear in the same articles despite being used in different contexts (e.g. suppose each article is actually about 'impeachment' and 'healthcare concerns', respectively).
 
@@ -466,7 +547,7 @@ prop_neg %>%
   coronavirus_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 It looks as if there is some kind of increasing trend in negativity from the period February to May but it's not clear whether the increase is significant or not. How can we make this more rigorous? Statisticians typically apply 'hypothesis testing' to this type of scenario. The hypothesis test can establish whether the increase in negative sentiment is beyond the realms of normality or not.
 
@@ -502,11 +583,11 @@ prop_neg %>%
        title = "How negative sentiment is changing over time",
        subtitle = "Negative sentiment is fairly stationary however there is a peak during March to April",
        caption = "Source: New York Times API") +
-  annotate("text", x = date("2020-03-03"), y = 0.45, size = 2.8, label = glue::glue("Statistically significant difference (mean = ", round(pull(t_test_results, estimate), 5), ", p < 0.05)\nin relative frequency of negative sentiment after\nmidpoint, 1 March 2020"), colour = "grey90", hjust = 0, alpha = 0.80, fontface = 3) +
+  annotate("text", x = date("2020-03-03"), y = 0.45, size = 2.8, label = glue::glue("Statistically significant difference (mean = ", round(pull(t_test_results, estimate), 5), ", p < 0.05)\nin relative frequency of negative sentiment after\nmidpoint, 1 March 2020"), colour = "grey90", hjust = 0, alpha = 0.80, fontface = 1) +
   coronavirus_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-18-1.png)
 
 So, whilst the difference itself is small (around 0.04), it is nonetheless statistically significant.
 
