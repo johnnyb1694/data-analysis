@@ -317,7 +317,35 @@ logit_model_inputs %>%
 
 No surprises here, per se. We removed it but the word 'coronavirus' is indeed the highest growing term if it is accounted for. However, even in this set of 20 terms we start to notice other observable reporting trends: how the coronavirus may affect 'kids', the plight of 'health workers', the efficacy of 'masks'.
 
-As for shrinking terms, this where things get a little more interesting:
+What is interesting though is to note *when* these terms start to gain traction: it happens at a different point in time to when the coronavirus was the most important topic:
+
+``` r
+logit_model_inputs %>%
+  filter(article_term %in% c("masks", "workers", "pandemic", "coronavirus")) %>%
+  group_by(article_term) %>%
+  mutate(cum_successes = cumsum(successes),
+         total_successes = sum(successes),
+         cum_successes_inc = cum_successes / lag(cum_successes)) %>%
+  ungroup() %>%
+  select(article_term, cum_time_elapsed, cum_successes, total_successes) %>%
+  mutate(prop_success = cum_successes / total_successes,
+         covid_flag = ifelse(article_term == "coronavirus", TRUE, FALSE)) %>%
+  ggplot(mapping = aes(cum_time_elapsed, prop_success, colour = article_term, lty = !covid_flag)) +
+  geom_smooth(method = 'glm', method.args = list(family = "binomial"), alpha = 0.08, se = F, show.legend = FALSE) +
+  scale_y_continuous(labels = percent_format()) +
+  scale_colour_brewer(type = 'div', palette = 'Set3') +
+  coronavirus_theme +
+  labs(x = "Cumulative time elapsed (since new year)",
+       y = "Coverage (propn. of total as at 1 May 2020)",
+       title = "Viral growth has a limit",
+       subtitle = "And that limit is caused by 'competing' topics: the 'coronavirus' shifts into new subtopics over time")
+```
+
+    ## `geom_smooth()` using formula 'y ~ x'
+
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
+As for shrinking terms, this is where things get a little more interesting:
 
 ``` r
 logit_model_inputs %>%
@@ -336,7 +364,7 @@ logit_model_inputs %>%
   scale_colour_brewer(type = 'div', palette = 'Set3')
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-11-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-12-1.png)
 
 There's a story - in fact, a history even - borne out of these terms. Whatever happened to the situation in Iran? Trump's impeachment? Though it isn't unsurpirising, these topics have clearly taken a back seat to the coronavirus.
 
@@ -405,7 +433,7 @@ archive_topics_terms %>%
   growth_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
 Notice how the same words appear in each topic: this is an *advantage* of LDA over 'hard' clustering methods which naively separate words into different clusters. The algorithm recognises that words such as 'president' and 'coronavirus' can and do appear in the same articles despite being used in different contexts (e.g. suppose each article is actually about 'impeachment' and 'healthcare concerns', respectively).
 
@@ -438,7 +466,7 @@ prop_neg %>%
   coronavirus_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 It looks as if there is some kind of increasing trend in negativity from the period February to May but it's not clear whether the increase is significant or not. How can we make this more rigorous? Statisticians typically apply 'hypothesis testing' to this type of scenario. The hypothesis test can establish whether the increase in negative sentiment is beyond the realms of normality or not.
 
@@ -478,7 +506,7 @@ prop_neg %>%
   coronavirus_theme
 ```
 
-![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](emerging-trends-analysis_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
 So, whilst the difference itself is small (around 0.04), it is nonetheless statistically significant.
 
